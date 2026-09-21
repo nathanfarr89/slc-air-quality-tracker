@@ -71,7 +71,9 @@ const float = (v: string | null): number | undefined =>
 /** Validates the request and builds the upstream URL, or returns an error Response. */
 export function buildUpstream(url: URL, now: number): { url: string } | { error: Response } {
   const path = url.pathname.startsWith(PROXY_PREFIX) ? url.pathname.slice(PROXY_PREFIX.length) : '';
-  const q = url.searchParams;
+  // Vercel's file-system catch-all route injects its own '...path' parameter; it isn't part of the client's request.
+  const q = new URLSearchParams(url.searchParams);
+  q.delete('...path');
 
   if (path === '/sensors') {
     const problem = checkParams(q, SENSORS_PARAMS) ?? checkFields(q.get('fields'), SENSOR_FIELDS);

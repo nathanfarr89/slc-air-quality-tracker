@@ -69,6 +69,26 @@ describe('purpleair proxy: forwarding', () => {
   });
 });
 
+describe('purpleair proxy: platform routing', () => {
+  it('ignores the catch-all parameter Vercel injects, and does not forward it', async () => {
+    const qs = new URLSearchParams({ ...Object.fromEntries(SENSORS_QS), '...path': 'sensors' });
+    const { res, calls } = await run('/sensors', qs);
+    expect(res.status).toBe(200);
+    expect(calls[0]?.url).not.toContain('path');
+  });
+
+  it('still rejects genuinely unknown parameters alongside it', async () => {
+    const qs = new URLSearchParams({
+      ...Object.fromEntries(SENSORS_QS),
+      '...path': 'sensors',
+      api_key: 'x',
+    });
+    const { res, calls } = await run('/sensors', qs);
+    expect(res.status).toBe(400);
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe('purpleair proxy: allowlist (protects the points budget)', () => {
   const rejected = async (path: string, qs: URLSearchParams, status = 400) => {
     const { res, calls } = await run(path, qs);
