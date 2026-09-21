@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import {
   Box,
   CloseButton,
@@ -88,12 +89,15 @@ function Body({ series }: { series: StationSeries }) {
 }
 
 export function StationDrawer({ series, onClose, returnFocusTo }: Props) {
+  const closeRef = useRef<HTMLButtonElement>(null);
   const placement = useBreakpointValue<'bottom' | 'end'>({ base: 'bottom', md: 'end' }) ?? 'end';
   return (
     <Drawer.Root
       open={Boolean(series)}
       onOpenChange={(e) => !e.open && onClose()}
       finalFocusEl={returnFocusTo}
+      // Open on the dialog's close button; Apex makes the chart focusable, and landing there shows a stray focus ring and tooltip.
+      initialFocusEl={() => closeRef.current}
       placement={placement}
       size={placement === 'end' ? 'md' : 'full'}
     >
@@ -111,7 +115,7 @@ export function StationDrawer({ series, onClose, returnFocusTo }: Props) {
             </Drawer.Header>
             <Drawer.Body pb="6">{series && <Body series={series} />}</Drawer.Body>
             <Drawer.CloseTrigger asChild position="absolute" top="3" insetEnd="3">
-              <CloseButton aria-label="Close station details" />
+              <CloseButton ref={closeRef} aria-label="Close station details" />
             </Drawer.CloseTrigger>
           </Drawer.Content>
         </Drawer.Positioner>

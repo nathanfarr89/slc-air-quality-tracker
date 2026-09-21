@@ -61,6 +61,7 @@ export function MonthBoxPlot({ daily }: { daily: DailyPoint[] }) {
           y: STANDARD,
           yanchor: 'bottom',
           xanchor: 'left',
+          xshift: 8,
           showarrow: false,
           text: `EPA 24-hour standard, ${STANDARD} µg/m³`,
           font: { color: colors.text, size: 11 },

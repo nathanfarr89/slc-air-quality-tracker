@@ -92,10 +92,10 @@ function AqiGauge({ pm25 }: { pm25: number }) {
           hollow: { size: '60%' },
           track: { background: colors.grid },
           dataLabels: {
-            name: { show: true, offsetY: 22, color: colors.muted, fontSize: '12px' },
+            name: { show: false },
             value: {
               show: true,
-              offsetY: -16,
+              offsetY: 10,
               color: colors.text,
               fontSize: '30px',
               fontWeight: 700,
@@ -110,12 +110,18 @@ function AqiGauge({ pm25 }: { pm25: number }) {
     };
   }, [colors, mode, aqi, category]);
   return (
-    <Chart
-      type="radialBar"
-      height={190}
-      series={[Math.min(100, (aqi / 300) * 100)]}
-      options={options}
-    />
+    <>
+      <Chart
+        type="radialBar"
+        height={170}
+        series={[Math.min(100, (aqi / 300) * 100)]}
+        options={options}
+      />
+      {/* Outside the chart: long category names ("Unhealthy for Sensitive Groups") overflow the arc. */}
+      <Text textAlign="center" fontWeight="medium">
+        {category.label}
+      </Text>
+    </>
   );
 }
 

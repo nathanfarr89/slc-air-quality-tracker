@@ -37,7 +37,8 @@ export function TempScatter({ daily }: { daily: DailyPoint[] }) {
         {
           type: 'scatter',
           mode: 'markers',
-          name: c.label,
+          // Shorter in the legend so entries don't collide; the hover still shows the full name.
+          name: c.key === 'usg' ? 'Sensitive groups' : c.label,
           x: pts.map((p) => p.tempF),
           y: pts.map((p) => p.pm25),
           text: pts.map((p) => p.date),
