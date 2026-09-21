@@ -210,3 +210,67 @@ describe('purpleair sensors for the map', () => {
     expect(calls).toBe(2);
   });
 });
+
+describe('purpleair via the server proxy', () => {
+  const PROXY = '/api/purpleair';
+  function proxied() {
+    const calls: { url: URL; init?: RequestInit }[] = [];
+    const impl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input), 'https://site.test');
+      calls.push({ url, init });
+      return new Response(
+        JSON.stringify(
+          url.pathname.endsWith('/sensors')
+            ? SENSOR_TABLE
+            : historyTable([NOW - 3_600_000], 20, 20),
+        ),
+      );
+    }) as typeof fetch;
+    return { pa: createPurpleAirProvider(undefined, impl, () => NOW, PROXY), calls };
+  }
+
+  it('is enabled without any key, calls the proxy path, and sends no key header', async () => {
+    const { pa, calls } = proxied();
+    expect(pa.enabled).toBe(true);
+    await pa.getStations();
+    expect(calls[0]?.url.pathname).toBe('/api/purpleair/sensors');
+    expect(calls[0]?.init).toBeUndefined();
+  });
+
+  it('is what createProvider selects when a proxy URL is set, even if a direct key exists too', () => {
+    expect(createProvider({ useMock: false, purpleAirProxyUrl: PROXY, purpleAirKey: 'k' }).id).toBe(
+      'purpleair',
+    );
+    expect(createProvider({ useMock: true, purpleAirProxyUrl: PROXY }).id).toBe('mock');
+  });
+
+  it('explains a rejected proxy request', async () => {
+    const pa = createPurpleAirProvider(
+      undefined,
+      (async () => new Response('{}', { status: 403 })) as typeof fetch,
+      () => NOW,
+      PROXY,
+    );
+    await expect(pa.getStations()).rejects.toThrow(/PURPLEAIR_API_KEY on the server/);
+  });
+
+  it('rounds history windows to 10-minute buckets so all visitors share cached responses', async () => {
+    const urlsAt = async (t: number) => {
+      const calls: string[] = [];
+      const impl = (async (input: RequestInfo | URL) => {
+        const u = String(input);
+        calls.push(u);
+        return new Response(
+          JSON.stringify(u.includes('/history') ? historyTable([t], 20, 20) : SENSOR_TABLE),
+        );
+      }) as typeof fetch;
+      await createPurpleAirProvider(undefined, impl, () => t, PROXY).getSeries('24h');
+      return calls.filter((c) => c.includes('/history')).sort();
+    };
+    const a = await urlsAt(Date.parse('2026-01-20T18:01:10Z'));
+    const b = await urlsAt(Date.parse('2026-01-20T18:09:59Z'));
+    const c = await urlsAt(Date.parse('2026-01-20T18:10:01Z'));
+    expect(a).toEqual(b);
+    expect(a).not.toEqual(c);
+  });
+});

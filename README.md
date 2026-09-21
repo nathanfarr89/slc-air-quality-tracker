@@ -29,12 +29,14 @@ npm run dev
 
 ### Environment variables
 
-| Variable                 | Purpose                                                                                                              |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `VITE_MAPBOX_TOKEN`      | Mapbox public token. Without it the map is replaced by an explanatory message; the station table still works.        |
-| `VITE_USE_MOCK_DATA`     | `true` serves offline fixtures (a cleared inversion plus one still building, and winter episodes for the past year). |
-| `VITE_MOCK_SENSOR_COUNT` | Mock mode only: number of simulated map sensors (default 180). Try 5000 to stress-test the map layers.               |
-| `VITE_PURPLEAIR_API_KEY` | PurpleAir **read** key. When set (and mock mode is off) PurpleAir is used instead of Open-Meteo. See below.          |
+| Variable                   | Purpose                                                                                                                   |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_MAPBOX_TOKEN`        | Mapbox public token. Without it the map is replaced by an explanatory message; the station table still works.             |
+| `VITE_USE_MOCK_DATA`       | `true` serves offline fixtures (a cleared inversion plus one still building, and winter episodes for the past year).      |
+| `VITE_MOCK_SENSOR_COUNT`   | Mock mode only: number of simulated map sensors (default 180). Try 5000 to stress-test the map layers.                    |
+| `VITE_PURPLEAIR_PROXY_URL` | Production: `/api/purpleair`. Routes PurpleAir calls through the server-side proxy (highest priority after mock mode).    |
+| `PURPLEAIR_API_KEY`        | Production, server-only (no `VITE_`): the PurpleAir read key used by the proxy function.                                  |
+| `VITE_PURPLEAIR_API_KEY`   | **Local development only**: a direct PurpleAir read key. Visible in the browser bundle, so never set it on a public host. |
 
 `.env.local` is git-ignored; `.env.example` contains no secrets. Note that any `VITE_*` value is embedded in the
 client bundle, so use a URL-restricted public Mapbox token.
@@ -94,7 +96,7 @@ the remaining bulk of the initial load; see "What I'd do next".
 
 ### PurpleAir adapter
 
-Source priority in `api/index.ts`: mock flag, then PurpleAir if a key is set, else Open-Meteo.
+Source priority in `api/index.ts`: mock flag, then PurpleAir via the proxy (`VITE_PURPLEAIR_PROXY_URL`), then PurpleAir with a direct key (dev only), else Open-Meteo.
 
 - **Areas, not single sensors.** Each of the five fixed stations becomes an area. The adapter discovers outdoor
   sensors that reported in the last hour, drops any whose channels A/B disagree (within 5 µg/m³ or 70%), and
@@ -281,7 +283,7 @@ analysis rather than live data.
 
 ## Testing
 
-`npm test` runs Vitest + React Testing Library (103 tests):
+`npm test` runs Vitest + React Testing Library (128 tests):
 
 - AQI category boundaries (including EPA one-decimal truncation), AQI interpolation, and color/shape uniqueness
 - Mock provider: determinism, station filtering, inversion shape (buildup, peak, clearing), temperature coverage
@@ -289,6 +291,7 @@ analysis rather than live data.
 - Provider selection, PurpleAir adapter (EPA correction, channel QC, area aggregation, chunking, daily history, error mapping), freshness helpers
 - Derivations (Mountain-time day bucketing, calendar grid, quartiles) and the live-append hook
 - `DataState` loading, error + retry, empty, stale and cached-data states
+- PurpleAir proxy (`server/`): allowlist and bounds rejection without calling upstream, key never in responses, cache headers, error mapping; plus the adapter's proxy mode and cache bucketing
 - `ErrorBoundary`: fallback, retry, reset on key change, reporting hook, custom description, chunk-load message, page variant
 - Map logic: GeoJSON conversion, AQI color expressions, layer definitions, heat normalization, and hover/pin/cluster-zoom behavior (against a fake map)
 
@@ -330,23 +333,40 @@ the proxy below, so the sensor layers, clusters and heat layer appear.
 
 ### Deploying to Vercel
 
-1. Create a git repository and push it to GitHub (the project isn't a git repo yet: `git init`, commit, push).
-2. In Vercel choose **Add New Project**, import the repo, and keep the detected **Vite** preset
-   (build `npm run build`, output `dist`).
-3. Add environment variables (they're baked into the bundle at build time):
-   - `VITE_MAPBOX_TOKEN`: a **public** token (`pk.`), created for production and **URL-restricted** to your
-     domain(s) in the Mapbox dashboard.
-   - `VITE_USE_MOCK_DATA=false`
-   - Leave `VITE_PURPLEAIR_API_KEY` **unset** until the key is proxied (see below).
-4. Deploy, then add your production and preview URLs to the Mapbox token's allowed URLs.
+Deploy from **GitHub**, not by uploading a working folder: the repo has no `.env.local`, so a local key can never be
+bundled into the public build (`.vercelignore` is a second guard for `vercel deploy`).
 
-### Keeping the PurpleAir key private
+1. Push to GitHub and import the repo in Vercel (or `vercel link` then `vercel git connect`). The Vite preset and the
+   security headers come from `vercel.json`.
+2. Add environment variables (Production and Preview):
 
-Any `VITE_*` variable is readable by every visitor. To use PurpleAir in production, add a Vercel Function (for example
-`api/purpleair/[...path].ts`) that forwards allowlisted `GET /v1/sensors...` requests to PurpleAir with the key from a
-**non-`VITE_`** server variable (`PURPLEAIR_API_KEY`), and sets `Cache-Control: s-maxage=300` so the CDN absorbs
-repeat traffic (this also protects your PurpleAir point budget). The client would then use `/api/purpleair` as its base
-URL and no key. This isn't implemented yet.
+   | Variable                   | Value                       | Notes                                                                        |
+   | -------------------------- | --------------------------- | ---------------------------------------------------------------------------- |
+   | `VITE_MAPBOX_TOKEN`        | your public `pk.` token     | Baked into the bundle. **URL-restrict it** in the Mapbox dashboard           |
+   | `VITE_PURPLEAIR_PROXY_URL` | `/api/purpleair`            | Public setting: tells the client to use the proxy                            |
+   | `PURPLEAIR_API_KEY`        | your PurpleAir **read** key | **No `VITE_` prefix.** Mark it _Sensitive_. Server-only, never in the bundle |
+
+   Do **not** set `VITE_PURPLEAIR_API_KEY` or `VITE_USE_MOCK_DATA` on a public host.
+
+3. Deploy, then add the production and preview URLs to the Mapbox token's allowed URLs.
+
+### The PurpleAir proxy
+
+`api/purpleair/[...path].ts` is a Vercel Function; its logic lives in `server/purpleairProxy.ts` (unit-tested). The
+client uses it when `VITE_PURPLEAIR_PROXY_URL` is set, so the browser never holds a key.
+
+- **Allowlist.** It only forwards `GET /sensors` and `GET /sensors/:id/history`, with allow-listed query parameters and
+  fields, outdoor sensors only, a bounding box inside the valley, and history windows within PurpleAir's limits (no
+  future, no inverted ranges). Anything else gets a 4xx **before** PurpleAir is called, so the public endpoint can't be
+  used to spend your points.
+- **Caching.** Successful responses carry `s-maxage=300, stale-while-revalidate=600`, so the CDN answers repeat
+  requests. The client rounds history windows to 10-minute boundaries so every visitor asks for the _same_ URL; without
+  that, each request would be unique and never cache. Errors are never cached.
+- **Errors.** Upstream 402/403/429 pass through (the client shows actionable messages); everything else becomes a
+  generic 502. Upstream error bodies are not forwarded.
+- **Limits.** It is still a public endpoint: someone could craft many _distinct_ valid requests to defeat the cache. The
+  allowlist bounds the damage, but for a hard guarantee add rate limiting (for example Vercel's WAF rate limit rules)
+  and watch your point balance.
 
 ## Production readiness
 
@@ -362,12 +382,12 @@ Status of what's needed before this should be called production-ready.
 | **Git repo and CI**                 | Done    | GitHub Actions runs format, typecheck, lint, test and build on Node 22 and 24. Still to do in GitHub: require the checks via branch protection                                               |
 | **React error boundary**            | Done    | App-level, per-view and map-level boundaries, tested; wire `onError` to an error-monitoring service when you add one                                                                         |
 | **Live-API verification**           | To do   | Open-Meteo and PurpleAir adapters are unit-tested with a fake `fetch` but haven't been run against the real services; test both                                                              |
-| **PurpleAir key proxy**             | To do   | See above; required before enabling PurpleAir on a public site                                                                                                                               |
+| **PurpleAir key proxy**             | Done    | Vercel Function with allowlist and CDN caching (see above). Add rate limiting for a hard cost guarantee                                                                                      |
 | **Mapbox token hygiene**            | To do   | Use a production-only public token, restrict it by URL, and monitor usage in the Mapbox dashboard                                                                                            |
 | **Accessibility audit**             | To do   | Built with keyboard/ARIA support and checked manually in a browser, but no axe/Lighthouse run and no screen-reader pass yet                                                                  |
 | End-to-end tests                    | To do   | Playwright for tabs, drawer open/close/focus, live toggle, dark mode; the map itself has no automated test                                                                                   |
 | Error monitoring                    | To do   | e.g. Sentry (a new dependency, so decide before adding)                                                                                                                                      |
-| Security headers / CSP              | To do   | Set on the host. Mapbox GL needs `worker-src blob:`, `img-src data: blob:` and `connect-src` for `api.mapbox.com` and `events.mapbox.com`; charts need `style-src 'unsafe-inline'`           |
+| Security headers / CSP              | Done    | Set in `vercel.json` (CSP tailored to Mapbox, nosniff, frame denial, referrer and permissions policies). Verify no violations in the browser console after each dependency change            |
 | Data terms and attribution          | To do   | Confirm Open-Meteo, PurpleAir and Mapbox terms for your use (Open-Meteo's free tier is for non-commercial use), keep Mapbox attribution visible, and keep the source links on the About page |
 | SEO/social metadata                 | To do   | Add Open Graph tags and a preview image to `index.html`                                                                                                                                      |
 | Bundle budget                       | Partial | Initial JS is ~437 kB gzip. Lazy-load Trends/Apex and split Chakra to trim it                                                                                                                |

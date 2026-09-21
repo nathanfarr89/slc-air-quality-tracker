@@ -1,0 +1,7 @@
+# Never upload local secrets or build output if someone deploys from a working folder with `vercel deploy`.
+# (Preferred: deploy from GitHub, where these files don't exist.)
+.env
+.env.*
+!.env.example
+node_modules
+dist

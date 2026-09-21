@@ -27,6 +27,8 @@ const HOURLY_CHUNK_MS = 10 * DAY;
 const DAILY_CHUNK_MS = 180 * DAY;
 const CONCURRENCY = 3;
 const DISCOVERY_TTL_MS = 10 * 60_000;
+/** History windows end on a 10-minute boundary (see series()). */
+export const CACHE_BUCKET_MS = 10 * 60_000;
 
 type Cell = number | string | null;
 interface Table {
@@ -123,15 +125,24 @@ export function createPurpleAirProvider(
   apiKey: string | undefined = import.meta.env.VITE_PURPLEAIR_API_KEY,
   fetchImpl: Fetch = (...args) => fetch(...args),
   now: () => number = Date.now,
+  /** Override to route through a server-side proxy that holds the key (see api/purpleair). */
+  baseUrl: string = BASE,
 ): PurpleAirProvider {
-  const enabled = Boolean(apiKey);
+  const proxied = baseUrl !== BASE;
+  // Behind the proxy the browser never sees a key, so 'enabled' can't depend on one.
+  const enabled = Boolean(apiKey) || proxied;
 
   async function get(path: string, params: Record<string, string | number>): Promise<Table> {
-    const url = `${BASE}${path}?${new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]))}`;
-    const res = await fetchImpl(url, { headers: { 'X-API-Key': apiKey ?? '' } });
+    const url = `${baseUrl}${path}?${new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]))}`;
+    const res = await fetchImpl(
+      url,
+      proxied ? undefined : { headers: { 'X-API-Key': apiKey ?? '' } },
+    );
     if (res.status === 401 || res.status === 403) {
       throw new ApiError(
-        `PurpleAir rejected the API key (${res.status}). Use a READ key.`,
+        proxied
+          ? `The PurpleAir proxy was rejected (${res.status}). Check PURPLEAIR_API_KEY on the server.`
+          : `PurpleAir rejected the API key (${res.status}). Use a READ key.`,
         res.status,
       );
     }
@@ -263,7 +274,8 @@ export function createPurpleAirProvider(
   ): Promise<StationSeries[]> {
     const { areas } = await discover();
     const stations = pickStations(ids).filter((s) => areas.has(s.id));
-    const end = now();
+    // Bucketed so every visitor in the same window requests identical URLs and the proxy's CDN cache can hit.
+    const end = Math.floor(now() / CACHE_BUCKET_MS) * CACHE_BUCKET_MS;
     const jobs = stations.flatMap((station) =>
       (areas.get(station.id) ?? []).map((index) => ({ station, index })),
     );

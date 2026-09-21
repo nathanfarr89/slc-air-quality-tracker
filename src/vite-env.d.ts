@@ -4,6 +4,7 @@ interface ImportMetaEnv {
   readonly VITE_MAPBOX_TOKEN?: string;
   readonly VITE_USE_MOCK_DATA?: string;
   readonly VITE_PURPLEAIR_API_KEY?: string;
+  readonly VITE_PURPLEAIR_PROXY_URL?: string;
   readonly VITE_MOCK_SENSOR_COUNT?: string;
 }
 

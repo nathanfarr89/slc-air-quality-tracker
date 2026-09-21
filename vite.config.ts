@@ -12,6 +12,7 @@ export default defineConfig({
     env: {
       VITE_USE_MOCK_DATA: 'true',
       VITE_PURPLEAIR_API_KEY: '',
+      VITE_PURPLEAIR_PROXY_URL: '',
       VITE_MAPBOX_TOKEN: '',
       VITE_MOCK_SENSOR_COUNT: '',
     },
