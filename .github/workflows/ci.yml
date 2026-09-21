@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same branch/PR cancels the in-flight run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: CI only needs to read the repo.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # Supported range comes from the toolchain (vitest/jsdom): ^22.22.2 || ^24.15.0 || >=26
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Format
+        run: npm run format:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # Visibility into bundle growth; informational, never fails the build.
+      - name: Bundle size summary
+        if: matrix.node == 24
+        run: |
+          {
+            echo "### Bundle size (gzip)"
+            echo
+            echo '| File | Gzip (kB) |'
+            echo '| --- | ---: |'
+            for f in dist/assets/*.js dist/assets/*.css; do
+              printf '| `%s` | %s |\n' "$(basename "$f")" "$(awk "BEGIN { printf \"%.1f\", $(gzip -c "$f" | wc -c) / 1024 }")"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build
+        if: matrix.node == 24
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          retention-days: 7

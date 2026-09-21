@@ -1,5 +1,7 @@
 # Salt Lake Valley Air Quality & Inversion Tracker
 
+[![CI](https://github.com/nathanfarr89/slc-air-quality-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/nathanfarr89/slc-air-quality-tracker/actions/workflows/ci.yml)
+
 A React + TypeScript dashboard for current and historical PM2.5 across the Salt Lake Valley, built around
 winter inversion episodes. It runs out of the box on keyless data (Open-Meteo) or fully offline on
 inversion-shaped fixtures.
@@ -58,6 +60,11 @@ src/
 - **Single service layer.** Views call hooks; hooks call `provider`; adapters implement `AirQualityProvider`.
   Swapping in PurpleAir or AirNow/UDEQ means writing one adapter and changing one line in `api/index.ts`.
   The PurpleAir adapter rejects with a typed `ProviderDisabledError` when no key exists.
+- **Failure containment.** `ErrorBoundary` (a dependency-free class component) sits at three levels: the whole app
+  (full-page fallback), each view (resets when you switch tabs, so a crashed view never traps you), and around the
+  map (WebGL or Mapbox failures leave the rest of the Overview working). A failed lazy chunk, usually after a new
+  deploy, offers "Reload page" instead of a useless retry. It has an `onError` hook ready for error reporting.
+  Boundaries catch render errors only; data-fetch errors are handled by `DataState`.
 - **Explicit data states.** `DataState` handles loading, error (with retry), empty, stale (newest reading older
   than 3 h) and "refresh failed, showing cached data" for every view.
 - **One theme, three chart libraries.** AQI colors, chart series colors and surface colors are Chakra semantic
@@ -274,7 +281,7 @@ analysis rather than live data.
 
 ## Testing
 
-`npm test` runs Vitest + React Testing Library (90 tests):
+`npm test` runs Vitest + React Testing Library (103 tests):
 
 - AQI category boundaries (including EPA one-decimal truncation), AQI interpolation, and color/shape uniqueness
 - Mock provider: determinism, station filtering, inversion shape (buildup, peak, clearing), temperature coverage
@@ -282,9 +289,23 @@ analysis rather than live data.
 - Provider selection, PurpleAir adapter (EPA correction, channel QC, area aggregation, chunking, daily history, error mapping), freshness helpers
 - Derivations (Mountain-time day bucketing, calendar grid, quartiles) and the live-append hook
 - `DataState` loading, error + retry, empty, stale and cached-data states
+- `ErrorBoundary`: fallback, retry, reset on key change, reporting hook, custom description, chunk-load message, page variant
 - Map logic: GeoJSON conversion, AQI color expressions, layer definitions, heat normalization, and hover/pin/cluster-zoom behavior (against a fake map)
 
 The rendered Mapbox map and Plotly/Apex canvases are not unit-tested (they need WebGL/canvas); they were exercised manually in a browser, while the map's logic is tested separately as above.
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to `main` and every pull request, on Node 22 and 24 (the range the toolchain
+supports, also recorded in `engines`):
+
+`npm ci` → `format:check` → `typecheck` → `lint` → `test` → `build`
+
+- Read-only `GITHUB_TOKEN` permissions, a 10-minute timeout, and superseded runs on the same branch are cancelled.
+- The Node 24 job prints a gzip bundle-size table to the run summary and uploads `dist` as a 7-day artifact.
+- Tests are hermetic (no keys or tokens needed), and the build needs no secrets.
+- **Recommended repo setting:** in GitHub, enable branch protection on `main` and require the `Check (Node 22)` and
+  `Check (Node 24)` checks, so nothing merges red.
 
 ## Deployment
 
@@ -334,12 +355,12 @@ Status of what's needed before this should be called production-ready.
 | Area                                | Status  | Notes                                                                                                                                                                                        |
 | ----------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | TypeScript strict, ESLint, Prettier | Done    | `npm run typecheck`, `npm run lint`                                                                                                                                                          |
-| Unit tests                          | Done    | 71 tests on the data layer, AQI utils, derivations and `DataState`                                                                                                                           |
+| Unit tests                          | Done    | 103 tests: data layer, AQI utils, derivations, map logic, `DataState`, `ErrorBoundary`                                                                                                       |
 | Loading/empty/error/stale states    | Done    | `DataState` in every view                                                                                                                                                                    |
 | Code splitting                      | Done    | Plotly and Mapbox are lazy-loaded                                                                                                                                                            |
 | No secrets in the repo              | Done    | `.env.local` ignored; `.env.example` is blank                                                                                                                                                |
-| **Git repo and CI**                 | To do   | Not a git repo yet. Add a GitHub Actions workflow running `typecheck`, `lint`, `test` and `build` on every PR                                                                                |
-| **React error boundary**            | To do   | A render error currently blanks the app. Add a top-level and per-view boundary with a friendly fallback                                                                                      |
+| **Git repo and CI**                 | Done    | GitHub Actions runs format, typecheck, lint, test and build on Node 22 and 24. Still to do in GitHub: require the checks via branch protection                                               |
+| **React error boundary**            | Done    | App-level, per-view and map-level boundaries, tested; wire `onError` to an error-monitoring service when you add one                                                                         |
 | **Live-API verification**           | To do   | Open-Meteo and PurpleAir adapters are unit-tested with a fake `fetch` but haven't been run against the real services; test both                                                              |
 | **PurpleAir key proxy**             | To do   | See above; required before enabling PurpleAir on a public site                                                                                                                               |
 | **Mapbox token hygiene**            | To do   | Use a production-only public token, restrict it by URL, and monitor usage in the Mapbox dashboard                                                                                            |
