@@ -283,7 +283,7 @@ analysis rather than live data.
 
 ## Testing
 
-`npm test` runs Vitest + React Testing Library (128 tests):
+`npm test` runs Vitest + React Testing Library (131 tests):
 
 - AQI category boundaries (including EPA one-decimal truncation), AQI interpolation, and color/shape uniqueness
 - Mock provider: determinism, station filtering, inversion shape (buildup, peak, clearing), temperature coverage
@@ -352,10 +352,10 @@ bundled into the public build (`.vercelignore` is a second guard for `vercel dep
 
 ### The PurpleAir proxy
 
-`api/purpleair/[...path].ts` is a Vercel Function; its logic lives in `server/purpleairProxy.ts` (unit-tested). The
+`api/purpleair/[route].ts` is a Vercel Function; its logic lives in `server/purpleairProxy.ts` (unit-tested). The
 client uses it when `VITE_PURPLEAIR_PROXY_URL` is set, so the browser never holds a key.
 
-- **Allowlist.** It only forwards `GET /sensors` and `GET /sensors/:id/history`, with allow-listed query parameters and
+- **Allowlist.** It exposes two routes, `GET /api/purpleair/sensors` and `GET /api/purpleair/history?sensor_index=…` (one path segment each: the platform only routes a single segment to the function), and forwards them with allow-listed query parameters and
   fields, outdoor sensors only, a bounding box inside the valley, and history windows within PurpleAir's limits (no
   future, no inverted ranges). Anything else gets a 4xx **before** PurpleAir is called, so the public endpoint can't be
   used to spend your points.

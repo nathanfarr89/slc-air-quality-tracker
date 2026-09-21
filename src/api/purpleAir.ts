@@ -239,7 +239,9 @@ export function createPurpleAirProvider(
     const span = average === 60 ? HOURLY_CHUNK_MS : DAILY_CHUNK_MS;
     const readings: Reading[] = [];
     for (const [from, to] of chunkRanges(start, end, span)) {
-      const table = await get(`/sensors/${index}/history`, {
+      // Behind the proxy the sensor is a parameter (the platform routes one path segment); direct calls use the real path.
+      const table = await get(proxied ? '/history' : `/sensors/${index}/history`, {
+        ...(proxied ? { sensor_index: index } : {}),
         start_timestamp: Math.floor(from / 1000),
         end_timestamp: Math.floor(to / 1000),
         average,

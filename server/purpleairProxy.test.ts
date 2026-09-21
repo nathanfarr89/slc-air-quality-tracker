@@ -15,6 +15,7 @@ const SENSORS_QS = new URLSearchParams({
 });
 const HISTORY_QS = (over: Record<string, string> = {}) =>
   new URLSearchParams({
+    sensor_index: '12345',
     start_timestamp: String(sec('2026-01-19T18:00:00Z')),
     end_timestamp: String(sec('2026-01-20T18:00:00Z')),
     average: '60',
@@ -57,9 +58,10 @@ describe('purpleair proxy: forwarding', () => {
   });
 
   it('forwards a valid history request', async () => {
-    const { res, calls } = await run('/sensors/12345/history', HISTORY_QS());
+    const { res, calls } = await run('/history', HISTORY_QS());
     expect(res.status).toBe(200);
     expect(calls[0]?.url).toContain('/v1/sensors/12345/history?');
+    expect(calls[0]?.url).not.toContain('sensor_index');
   });
 
   it('never returns the key to the client', async () => {
@@ -70,8 +72,8 @@ describe('purpleair proxy: forwarding', () => {
 });
 
 describe('purpleair proxy: platform routing', () => {
-  it('ignores the catch-all parameter Vercel injects, and does not forward it', async () => {
-    const qs = new URLSearchParams({ ...Object.fromEntries(SENSORS_QS), '...path': 'sensors' });
+  it('ignores the route parameter Vercel injects, and does not forward it', async () => {
+    const qs = new URLSearchParams({ ...Object.fromEntries(SENSORS_QS), route: 'sensors' });
     const { res, calls } = await run('/sensors', qs);
     expect(res.status).toBe(200);
     expect(calls[0]?.url).not.toContain('path');
@@ -80,7 +82,7 @@ describe('purpleair proxy: platform routing', () => {
   it('still rejects genuinely unknown parameters alongside it', async () => {
     const qs = new URLSearchParams({
       ...Object.fromEntries(SENSORS_QS),
-      '...path': 'sensors',
+      route: 'sensors',
       api_key: 'x',
     });
     const { res, calls } = await run('/sensors', qs);
@@ -104,9 +106,11 @@ describe('purpleair proxy: allowlist (protects the points budget)', () => {
   });
 
   it('rejects unknown paths', () => rejected('/organization', new URLSearchParams(), 404));
-  it('rejects path traversal-ish input', () =>
-    rejected('/sensors/1/history/../keys', HISTORY_QS(), 404));
-  it('rejects a non-numeric sensor id', () => rejected('/sensors/abc/history', HISTORY_QS(), 404));
+  it('rejects path traversal-ish input', () => rejected('/history/../keys', HISTORY_QS(), 404));
+  it('rejects a missing or non-numeric sensor id', async () => {
+    await rejected('/history', HISTORY_QS({ sensor_index: 'abc' }));
+    await rejected('/history', HISTORY_QS({ sensor_index: '1/../../organization' }));
+  });
 
   it('rejects unknown parameters, including a client-supplied api_key', async () => {
     await rejected(
@@ -124,7 +128,7 @@ describe('purpleair proxy: allowlist (protects the points budget)', () => {
       '/sensors',
       new URLSearchParams({ ...Object.fromEntries(SENSORS_QS), fields: 'name,pm10.0_atm' }),
     );
-    await rejected('/sensors/1/history', HISTORY_QS({ fields: 'pm2.5_atm_a' }));
+    await rejected('/history', HISTORY_QS({ fields: 'pm2.5_atm_a' }));
   });
 
   it('rejects a bounding box outside the valley', async () => {
@@ -153,19 +157,16 @@ describe('purpleair proxy: allowlist (protects the points budget)', () => {
 
   it('rejects windows longer than the limit for the averaging period', async () => {
     await rejected(
-      '/sensors/1/history',
+      '/history',
       HISTORY_QS({ start_timestamp: String(sec('2025-12-01T00:00:00Z')) }),
     );
-    await rejected('/sensors/1/history', HISTORY_QS({ average: '10' }));
+    await rejected('/history', HISTORY_QS({ average: '10' }));
   });
 
   it('rejects future or inverted windows', async () => {
+    await rejected('/history', HISTORY_QS({ end_timestamp: String(sec('2026-02-01T00:00:00Z')) }));
     await rejected(
-      '/sensors/1/history',
-      HISTORY_QS({ end_timestamp: String(sec('2026-02-01T00:00:00Z')) }),
-    );
-    await rejected(
-      '/sensors/1/history',
+      '/history',
       HISTORY_QS({ start_timestamp: String(sec('2026-01-21T00:00:00Z')) }),
     );
   });

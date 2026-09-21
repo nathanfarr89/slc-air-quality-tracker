@@ -1,5 +1,5 @@
 /**
- * Server-side PurpleAir proxy (runs as a Vercel Function, see api/purpleair/[...path].ts).
+ * Server-side PurpleAir proxy (runs as a Vercel Function, see api/purpleair/[route].ts).
  *
  * It exists for two reasons:
  *  1. The API key must never reach the browser (every VITE_* value is public).
@@ -28,7 +28,13 @@ const SENSOR_FIELDS = new Set([
 ]);
 const HISTORY_FIELDS = new Set(['pm2.5_cf_1_a', 'pm2.5_cf_1_b', 'humidity', 'temperature']);
 const SENSORS_PARAMS = new Set(['fields', 'location_type', 'max_age', ...Object.keys(BBOX)]);
-const HISTORY_PARAMS = new Set(['fields', 'start_timestamp', 'end_timestamp', 'average']);
+const HISTORY_PARAMS = new Set([
+  'sensor_index',
+  'fields',
+  'start_timestamp',
+  'end_timestamp',
+  'average',
+]);
 /** Longest window per averaging period (PurpleAir's own limits are 14 days hourly, 1 year daily). */
 const MAX_SPAN_MS: Record<string, number> = { '60': 14 * DAY, '1440': 200 * DAY };
 
@@ -71,9 +77,9 @@ const float = (v: string | null): number | undefined =>
 /** Validates the request and builds the upstream URL, or returns an error Response. */
 export function buildUpstream(url: URL, now: number): { url: string } | { error: Response } {
   const path = url.pathname.startsWith(PROXY_PREFIX) ? url.pathname.slice(PROXY_PREFIX.length) : '';
-  // Vercel's file-system catch-all route injects its own '...path' parameter; it isn't part of the client's request.
+  // Vercel's file-system route [route].ts injects its own 'route' parameter; it isn't part of the client's request.
   const q = new URLSearchParams(url.searchParams);
-  q.delete('...path');
+  q.delete('route');
 
   if (path === '/sensors') {
     const problem = checkParams(q, SENSORS_PARAMS) ?? checkFields(q.get('fields'), SENSOR_FIELDS);
@@ -97,10 +103,15 @@ export function buildUpstream(url: URL, now: number): { url: string } | { error:
     return { url: `${UPSTREAM}/sensors?${q}` };
   }
 
-  const history = /^\/sensors\/(\d{1,9})\/history$/.exec(path);
-  if (history) {
+  // History is a single-segment route with the sensor as a parameter: the platform only routes one path segment
+  // to this function, so the upstream shape /sensors/:id/history can't be exposed directly.
+  if (path === '/history') {
     const problem = checkParams(q, HISTORY_PARAMS) ?? checkFields(q.get('fields'), HISTORY_FIELDS);
     if (problem) return { error: bad(problem) };
+    const sensor = q.get('sensor_index') ?? '';
+    if (!/^\d{1,9}$/.test(sensor))
+      return { error: bad('sensor_index must be a numeric sensor id') };
+    q.delete('sensor_index');
     const average = q.get('average') ?? '';
     const maxSpan = MAX_SPAN_MS[average];
     if (!maxSpan) return { error: bad('average must be 60 or 1440') };
@@ -111,7 +122,7 @@ export function buildUpstream(url: URL, now: number): { url: string } | { error:
     }
     if ((end - start) * 1000 > maxSpan) return { error: bad('Requested window is too long') };
     if (end * 1000 > now + 3_600_000) return { error: bad('end_timestamp is in the future') };
-    return { url: `${UPSTREAM}/sensors/${history[1]}/history?${q}` };
+    return { url: `${UPSTREAM}/sensors/${sensor}/history?${q}` };
   }
 
   return { error: json(404, { error: 'Unknown PurpleAir path' }) };

@@ -237,6 +237,24 @@ describe('purpleair via the server proxy', () => {
     expect(calls[0]?.init).toBeUndefined();
   });
 
+  it('requests history as /history?sensor_index=… (single segment), while direct mode uses the real path', async () => {
+    const { pa, calls } = proxied();
+    await pa.getSeries('24h');
+    const viaProxy = calls.filter((c) => c.url.pathname.endsWith('history'));
+    expect(viaProxy.length).toBeGreaterThan(0);
+    expect(viaProxy.every((c) => c.url.pathname === '/api/purpleair/history')).toBe(true);
+    expect(viaProxy.every((c) => /^\d+$/.test(c.url.searchParams.get('sensor_index') ?? ''))).toBe(
+      true,
+    );
+
+    const direct = setup();
+    await direct.provider.getSeries('24h');
+    const paths = direct.calls
+      .filter((c) => c.url.pathname.endsWith('/history'))
+      .map((c) => c.url.pathname);
+    expect(paths.every((p) => /^\/v1\/sensors\/\d+\/history$/.test(p))).toBe(true);
+  });
+
   it('is what createProvider selects when a proxy URL is set, even if a direct key exists too', () => {
     expect(createProvider({ useMock: false, purpleAirProxyUrl: PROXY, purpleAirKey: 'k' }).id).toBe(
       'purpleair',
