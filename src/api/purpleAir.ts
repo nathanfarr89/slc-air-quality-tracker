@@ -50,10 +50,21 @@ export function epaCorrectedPm25(cf1: number, rh: number): number {
   return Math.max(0, pm);
 }
 
+/**
+ * PurpleAir's PM2.5 range tops out around 1,000 µg/m³. Both channels pinned near 5,000 is a saturated or failed
+ * particle counter: the channels "agree" with each other, so it needs its own check (seen live: ~12,000 µg/m³ after
+ * correction, which turned whole map clusters "Hazardous").
+ */
+export const MAX_PLAUSIBLE_CF1 = 1000;
+
 export function channelsAgree(a: number, b: number): boolean {
   const diff = Math.abs(a - b);
   return diff <= AB_MAX_ABS || diff / ((a + b) / 2) <= AB_MAX_REL;
 }
+
+/** A reading is usable when its channels agree and are within the sensor's physical range. */
+export const channelsUsable = (a: number, b: number) =>
+  Math.max(a, b) <= MAX_PLAUSIBLE_CF1 && channelsAgree(a, b);
 
 /** Sensor-housing temperature reads about 8 °F above ambient; returns ambient °C. */
 export const sensorFToAmbientC = (f: number) => ((f - 8 - 32) * 5) / 9;
@@ -188,7 +199,7 @@ export function createPurpleAirProvider(
               lon !== undefined &&
               a !== undefined &&
               b !== undefined &&
-              channelsAgree(a, b);
+              channelsUsable(a, b);
             if (!ok) return [];
             const name = typeof r.name === 'string' && r.name ? r.name : `Sensor ${index}`;
             // The EPA correction needs RH; sensors without it still count for area discovery.
@@ -257,7 +268,7 @@ export function createPurpleAirProvider(
         ];
         // The correction needs RH, and disagreeing channels mean a failing sensor.
         if (ts === undefined || a === undefined || b === undefined || rh === undefined) continue;
-        if (!channelsAgree(a, b)) continue;
+        if (!channelsUsable(a, b)) continue;
         // Daily rows are stamped at the start of the period; midpoint keeps them on the right Mountain-time day.
         const t = new Date(ts * 1000 + (average === 1440 ? 12 * HOUR : 0)).toISOString();
         const pm25 = Math.round(epaCorrectedPm25((a + b) / 2, rh) * 10) / 10;

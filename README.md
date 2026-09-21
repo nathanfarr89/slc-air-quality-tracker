@@ -99,7 +99,7 @@ the remaining bulk of the initial load; see "What I'd do next".
 Source priority in `api/index.ts`: mock flag, then PurpleAir via the proxy (`VITE_PURPLEAIR_PROXY_URL`), then PurpleAir with a direct key (dev only), else Open-Meteo.
 
 - **Areas, not single sensors.** Each of the five fixed stations becomes an area. The adapter discovers outdoor
-  sensors that reported in the last hour, drops any whose channels A/B disagree (within 5 µg/m³ or 70%), and
+  sensors that reported in the last hour, drops any whose channels A/B disagree (more than 5 µg/m³ and 70% apart) or read above the sensor's physical range (1,000 µg/m³; live data had sensors stuck at ~5,000 on both channels, which "agree" but are failed), and
   keeps the nearest 2 within 8 km. Readings are the median across them. Areas with no healthy sensor are omitted,
   and the Trends station list follows whatever the source returns.
 - **EPA correction.** Channel-mean CF=1 PM2.5 and sensor RH go through the EPA/Barkjohn 2021 US-wide correction.
@@ -283,7 +283,7 @@ analysis rather than live data.
 
 ## Testing
 
-`npm test` runs Vitest + React Testing Library (131 tests):
+`npm test` runs Vitest + React Testing Library (133 tests):
 
 - AQI category boundaries (including EPA one-decimal truncation), AQI interpolation, and color/shape uniqueness
 - Mock provider: determinism, station filtering, inversion shape (buildup, peak, clearing), temperature coverage

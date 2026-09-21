@@ -2,6 +2,7 @@ import { ApiError, ProviderDisabledError } from './errors';
 import { createProvider } from './index';
 import {
   channelsAgree,
+  channelsUsable,
   chunkRanges,
   combineSensors,
   createPurpleAirProvider,
@@ -27,6 +28,12 @@ describe('EPA correction and QC', () => {
     expect(channelsAgree(2, 6)).toBe(true); // 4 apart
     expect(channelsAgree(100, 130)).toBe(true); // 26% apart
     expect(channelsAgree(10, 80)).toBe(false);
+  });
+  it('rejects saturated sensors whose channels agree at an impossible value (~5,000 µg/m³)', () => {
+    expect(channelsAgree(4987.7, 4991.8)).toBe(true); // the trap: they agree with each other
+    expect(channelsUsable(4987.7, 4991.8)).toBe(false);
+    expect(channelsUsable(900, 910)).toBe(true);
+    expect(channelsUsable(10, 12)).toBe(true);
   });
   it('removes the housing temperature bias and converts to °C', () => {
     expect(sensorFToAmbientC(40)).toBeCloseTo(0, 5); // 40 °F sensor → 32 °F ambient
@@ -290,5 +297,46 @@ describe('purpleair via the server proxy', () => {
     const c = await urlsAt(Date.parse('2026-01-20T18:10:01Z'));
     expect(a).toEqual(b);
     expect(a).not.toEqual(c);
+  });
+});
+
+describe('purpleair saturated sensors (real-world failure mode)', () => {
+  it('excludes them from stations, sensors and history so they cannot skew averages', async () => {
+    const table = {
+      fields: [
+        'sensor_index',
+        'name',
+        'latitude',
+        'longitude',
+        'humidity',
+        'pm2.5_cf_1_a',
+        'pm2.5_cf_1_b',
+      ],
+      data: [
+        [1, 'Healthy', 40.761, -111.891, 30, 10, 11],
+        [2, 'Stuck at max', 40.762, -111.89, 30, 4987.7, 4991.8],
+      ],
+    };
+    const calls: string[] = [];
+    const impl = (async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      calls.push(url.pathname);
+      return new Response(
+        JSON.stringify(
+          url.pathname === '/v1/sensors'
+            ? table
+            : {
+                fields: ['time_stamp', 'pm2.5_cf_1_a', 'pm2.5_cf_1_b', 'humidity', 'temperature'],
+                data: [[Math.floor((NOW - 3_600_000) / 1000), 4990, 4990, 30, 50]],
+              },
+        ),
+      );
+    }) as typeof fetch;
+    const pa = createPurpleAirProvider('key', impl, () => NOW);
+    expect((await pa.getSensors!()).map((s) => s.name)).toEqual(['Healthy']);
+    // only the healthy sensor is queried for history, and even a stuck history row is dropped
+    const [s] = await pa.getSeries('24h');
+    expect(calls.filter((c) => c.endsWith('/history'))).toHaveLength(1);
+    expect(s?.readings).toEqual([]);
   });
 });
