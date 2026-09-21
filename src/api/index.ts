@@ -32,8 +32,15 @@ export function createProvider({
   return createOpenMeteoProvider();
 }
 
+/** A `?demo` query parameter switches to the simulated inversion data, so the winter story shows in any season. */
+export const hasDemoFlag = (search: string) => new URLSearchParams(search).has('demo');
+
+const envMock = import.meta.env.VITE_USE_MOCK_DATA === 'true';
+/** True when mock data was requested through the URL (and can therefore be exited by removing it). */
+export const demoFromUrl = !envMock && hasDemoFlag(window.location.search);
+
 export const provider = createProvider({
-  useMock: import.meta.env.VITE_USE_MOCK_DATA === 'true',
+  useMock: envMock || demoFromUrl,
   purpleAirKey: import.meta.env.VITE_PURPLEAIR_API_KEY,
   purpleAirProxyUrl: import.meta.env.VITE_PURPLEAIR_PROXY_URL,
   mockSensorCount: Number(import.meta.env.VITE_MOCK_SENSOR_COUNT) || undefined,

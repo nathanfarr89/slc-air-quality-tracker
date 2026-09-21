@@ -12,7 +12,7 @@ import {
   Tabs,
   Text,
 } from '@chakra-ui/react';
-import { provider } from './api';
+import { demoFromUrl, provider } from './api';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useColorMode } from './theme/colorMode';
 import AboutView from './features/about/AboutView';
@@ -101,6 +101,18 @@ export default function App() {
             </Box>
             <HStack>
               {provider.id === 'mock' && <Badge colorPalette="orange">Demo data</Badge>}
+              {/* A plain link: switching source is a full reload, so caches and the provider start clean. */}
+              {demoFromUrl ? (
+                <Link href={window.location.pathname} fontSize="sm">
+                  Use live data
+                </Link>
+              ) : (
+                provider.id !== 'mock' && (
+                  <Link href="?demo" fontSize="sm">
+                    See a winter inversion (demo)
+                  </Link>
+                )
+              )}
               <ColorModeButton />
             </HStack>
           </Flex>

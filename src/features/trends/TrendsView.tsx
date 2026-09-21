@@ -66,18 +66,19 @@ export default function TrendsView() {
         align={{ lg: 'flex-end' }}
         wrap="wrap"
       >
-        <Fieldset.Root w="auto">
-          <Fieldset.Legend fontSize="sm" mb="1">
+        <Box>
+          <Text id="trend-range-label" fontSize="sm" fontWeight="medium" mb="1">
             Time range
-          </Fieldset.Legend>
+          </Text>
           <SegmentGroup.Root
+            ids={{ label: 'trend-range-label' }}
             value={range}
             onValueChange={(e) => e.value && setRange(e.value as SeriesRange)}
           >
             <SegmentGroup.Indicator />
             <SegmentGroup.Items items={RANGES.map((r) => ({ value: r, label: r }))} />
           </SegmentGroup.Root>
-        </Fieldset.Root>
+        </Box>
 
         <Fieldset.Root w="auto">
           <Fieldset.Legend fontSize="sm" mb="1">

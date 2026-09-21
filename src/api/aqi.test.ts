@@ -59,3 +59,13 @@ describe('category table', () => {
     expect(aqiColor(40)).toBe('#ff7e00');
   });
 });
+
+describe('demo flag', () => {
+  it('is on when ?demo is in the URL, whatever its value', async () => {
+    const { hasDemoFlag } = await import('./index');
+    expect(hasDemoFlag('?demo')).toBe(true);
+    expect(hasDemoFlag('?a=1&demo=1')).toBe(true);
+    expect(hasDemoFlag('')).toBe(false);
+    expect(hasDemoFlag('?demonstration=1')).toBe(false);
+  });
+});
