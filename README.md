@@ -516,7 +516,12 @@ Status of what's needed before this should be called production-ready.
 | Bundle budget                       | Done    | Initial JS ~170 kB gzip; Apex, Mapbox and Plotly are lazy. Mobile TBT is limited by mapbox-gl (see the audit section)                                                                        |
 | Dependency hygiene                  | To do   | Enable Dependabot/Renovate and run `npm audit` in CI                                                                                                                                         |
 | Health disclaimer                   | Partial | About page says the data is not for health decisions; add a short visible footnote on the Overview                                                                                           |
-| Portfolio polish                    | Partial | Screenshots and live/demo links are in. Still to add: a LICENSE                                                                                                                              |
+| Portfolio polish                    | Done    | Screenshots, live and demo links, MIT LICENSE                                                                                                                                                |
+
+## License
+
+[MIT](LICENSE) for this code. It does not cover the data or services the app uses: PurpleAir, Open-Meteo and Mapbox
+have their own terms, and the Mapbox basemap and Open-Meteo data require attribution (both stay visible in the app).
 
 ## What I'd do next
 
