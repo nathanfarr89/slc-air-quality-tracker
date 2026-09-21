@@ -6,6 +6,8 @@ A React + TypeScript dashboard for current and historical PM2.5 across the Salt 
 winter inversion episodes. It runs out of the box on keyless data (Open-Meteo) or fully offline on
 inversion-shaped fixtures.
 
+**Live demo:** https://slc-air-quality-tracker.vercel.app (real PurpleAir sensors via a server-side proxy)
+
 **Views:** Overview (map, KPI cards, station drawer) · Trends (Apex time series, range + station filters, live
 polling) · History (Plotly: calendar heatmap, monthly box plot, PM2.5-vs-temperature scatter) · About/Data
 (sources, methodology, AQI legend).
