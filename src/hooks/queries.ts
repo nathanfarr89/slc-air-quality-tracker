@@ -31,3 +31,16 @@ export function useHistory(days = 365) {
     staleTime: 60 * MINUTE,
   });
 }
+
+/** Individual sensors for the map layers. Disabled (never fetches) for sources without them, e.g. Open-Meteo. */
+export const sensorsSupported = typeof provider.getSensors === 'function';
+
+export function useSensors() {
+  return useQuery({
+    queryKey: ['sensors', provider.id],
+    queryFn: () => provider.getSensors?.() ?? Promise.resolve([]),
+    enabled: sensorsSupported,
+    staleTime: 10 * MINUTE,
+    refetchInterval: BACKGROUND_POLL_MS * 2,
+  });
+}

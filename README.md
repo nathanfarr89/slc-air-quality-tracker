@@ -31,6 +31,7 @@ npm run dev
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------- |
 | `VITE_MAPBOX_TOKEN`      | Mapbox public token. Without it the map is replaced by an explanatory message; the station table still works.        |
 | `VITE_USE_MOCK_DATA`     | `true` serves offline fixtures (a cleared inversion plus one still building, and winter episodes for the past year). |
+| `VITE_MOCK_SENSOR_COUNT` | Mock mode only: number of simulated map sensors (default 180). Try 5000 to stress-test the map layers.               |
 | `VITE_PURPLEAIR_API_KEY` | PurpleAir **read** key. When set (and mock mode is off) PurpleAir is used instead of Open-Meteo. See below.          |
 
 `.env.local` is git-ignored; `.env.example` contains no secrets. Note that any `VITE_*` value is embedded in the
@@ -73,15 +74,15 @@ src/
 
 ### Bundle size (production build, gzip)
 
-| Chunk                                | Raw        | Gzip     | Loaded                         |
-| ------------------------------------ | ---------- | -------- | ------------------------------ |
-| App shell (React, Chakra, Apex, app) | 1,253 kB   | 368 kB   | Initial                        |
-| Chakra system                        | 265 kB     | 69 kB    | Initial                        |
-| `HistoryView` (Plotly cartesian)     | 1,449 kB   | 478 kB   | On opening History             |
-| `mapbox-gl`                          | 1,839 kB   | 510 kB   | On Overview, only with a token |
-| `MapPanel` + CSS                     | 18 + 49 kB | 7 + 6 kB | On Overview, only with a token |
+| Chunk                                | Raw        | Gzip      | Loaded                         |
+| ------------------------------------ | ---------- | --------- | ------------------------------ |
+| App shell (React, Chakra, Apex, app) | 1,251 kB   | 367 kB    | Initial                        |
+| Chakra system                        | 274 kB     | 72 kB     | Initial                        |
+| `HistoryView` (Plotly cartesian)     | 1,449 kB   | 478 kB    | On opening History             |
+| `mapbox-gl`                          | 1,839 kB   | 510 kB    | On Overview, only with a token |
+| `MapPanel` + CSS                     | 29 + 49 kB | 11 + 6 kB | On Overview, only with a token |
 
-Initial JS is about 437 kB gzipped. Plotly and Mapbox are each lazy-loaded via `React.lazy`. Apex and Chakra are
+Initial JS is about 439 kB gzipped. Plotly and Mapbox are each lazy-loaded via `React.lazy`. Apex and Chakra are
 the remaining bulk of the initial load; see "What I'd do next".
 
 ### PurpleAir adapter
@@ -105,47 +106,97 @@ Source priority in `api/index.ts`: mock flag, then PurpleAir if a key is set, el
 
 ### Job-requirement map
 
-| Requirement                    | Evidence in this project                                                                                                       | Coverage                                                    |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
-| Mapbox: **interactions**       | Keyboard- and pointer-operable markers that open a detail drawer; focus returns to the marker on close                         | Covered                                                     |
-| Mapbox: **performance tuning** | `mapbox-gl` split into a lazy chunk (510 kB gzip) that loads only when the map is shown; style swap without recreating the map | Partial (bundle/loading only; no large-dataset tuning yet)  |
-| Mapbox: **sources and layers** | None yet. Stations are DOM `Marker`s, not GeoJSON sources or style layers                                                      | **Gap.** See "Mapbox: what is and isn't demonstrated" below |
-| Plotly and/or ApexCharts       | Both, each for the job it suits: Apex for 4 dashboard/live widgets, Plotly for 3 exploratory charts                            | Covered                                                     |
+| Requirement                    | Evidence in this project                                                                                                                                                                    | Coverage                                             |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Mapbox: **sources**            | Two GeoJSON sources over one memoized dataset: a clustered one (with `clusterProperties` aggregation) and a raw one for the heatmap                                                         | Covered                                              |
+| Mapbox: **layers**             | `heatmap`, `circle` (clusters and points) and `symbol` (cluster counts, AQI labels) layers with data-driven `step`/`interpolate`/`case` expressions colored from the theme tokens           | Covered                                              |
+| Mapbox: **interactions**       | Hover highlight via `feature-state`, hover/pinned popups, click-to-expand clusters, layer toggles, plus keyboard-operable station markers that open a drawer                                | Covered                                              |
+| Mapbox: **performance tuning** | Clustering in a worker, GPU layers instead of DOM nodes for the dense set, no React re-render on hover, zoom-faded heat, density-normalized intensity, lazy chunk, 5,000-sensor stress mode | Covered (see "Measuring", no frame-time numbers yet) |
+| Plotly and/or ApexCharts       | Both, each for the job it suits: Apex for 4 dashboard/live widgets, Plotly for 3 exploratory charts                                                                                         | Covered                                              |
 
 ### Mapbox GL (via react-map-gl)
 
-**Where:** `src/features/overview/MapPanel.tsx` (the map) and `MapSection.tsx` (token check and lazy loading).
+**Where:** `src/features/overview/`
+
+| File                       | Role                                                                                                  |
+| -------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `MapPanel.tsx`             | The `<Map>`: viewport, basemap style, popups, station markers, error handling                         |
+| `sensorLayerSpecs.ts`      | Pure logic: sensors → GeoJSON, color expressions from AQI breakpoints, all layer definitions (tested) |
+| `SensorLayers.tsx`         | The two `<Source>`s and their `<Layer>`s                                                              |
+| `useSensorInteractions.ts` | Hover / click / cluster-zoom behavior (tested with a fake map)                                        |
+| `MapControls.tsx`          | Layer toggles and AQI legend overlaid on the map                                                      |
+| `MapSection.tsx`           | Token check and `React.lazy` boundary so `mapbox-gl` is a separate chunk                              |
+
 `mapbox-gl` v3 is used through `react-map-gl` v8 (`react-map-gl/mapbox`).
 
-**What it does here**
+**Data.** The map has two tiers on purpose:
 
-- **Declarative map.** `<Map>` with `initialViewState` fitting the valley's bounding box, so the framing is right on
-  any screen size. `NavigationControl` for zoom, and `cooperativeGestures` on touch devices so the map doesn't trap
-  page scrolling.
-- **Theme-aware basemap.** The `mapStyle` prop switches between `light-v11` and `dark-v11` with the app's color
-  mode. `react-map-gl` applies the new style to the existing map instead of re-creating it.
-- **Custom interactive markers.** Each station is a `Marker` containing an accessible `<button>` with an SVG whose
-  shape and AQI number encode the category (a color-blind-safe secondary cue). Clicking opens the drawer, and the
-  `aria-label` reads the station, PM2.5, AQI and category.
-- **Failure handling.** `onError` shows a warning instead of a blank map when the token is invalid, and a missing
-  token renders an explanation plus a station table.
-- **Performance.** The map and `mapbox-gl` load lazily (`React.lazy`), so users who never see the map, or have no
-  token, don't pay for them. Marker data is derived with memoized selectors, and tiles/rendering run on the GPU
-  inside Mapbox GL.
+1. **Five named areas** as DOM `Marker`s. Few enough that real `<button>` elements are the right call: they're
+   focusable, labelled, styled with the shape-plus-color AQI glyph, and open the detail drawer.
+2. **Individual sensors** as GeoJSON layers. Supplied by `provider.getSensors()`: PurpleAir returns the real
+   healthy outdoor sensors (EPA-corrected), mock mode simulates a dense network (default 180, configurable), and
+   Open-Meteo has none, because it's a coarse model with no physical sensors, so that source shows only the
+   station markers. Use mock mode or PurpleAir to see the layers.
 
-**Benefits of the approach:** the map is a normal React component, so app state (selected station, color mode, data
-polling) drives it without imperative `map.*` calls; a11y is easy because markers are real DOM buttons.
+**Sources.** `sensors` is a GeoJSON source with `cluster: true`, `clusterRadius: 45`, `clusterMaxZoom: 12` and a
+`clusterProperties` aggregate (`pmSum`) so each cluster knows its mean PM2.5. `sensors-heat` is the same data
+unclustered, because a heatmap must see every point, not cluster centroids. Features carry a numeric `id`, which
+`feature-state` requires.
 
-**Mapbox: what is and isn't demonstrated.** The requirement asks for layers, sources, interactions and performance
-tuning. This project currently shows interactions and loading-time performance, but **not sources or layers**. DOM
-markers are simple and accessible, but each one is a DOM node and they don't scale past a few hundred points. The
-natural next step, and the strongest way to cover the requirement, is:
+**Layers** (bottom to top)
 
-1. Put stations (and, with PurpleAir, every valley sensor) in a GeoJSON `<Source>` and render them with a `<Layer>`
-   of type `circle`, colored by a data-driven expression over PM2.5/AQI breakpoints.
-2. Add `feature-state` hover/selection styling and a popup driven by `queryRenderedFeatures`.
-3. Cluster at low zoom (`cluster: true`) and add a `heatmap` layer for PM2.5 intensity.
-4. Measure with the browser Performance panel and document the results (feature count vs frame time).
+| Layer                  | Type      | Notes                                                                                                                                       |
+| ---------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sensor-heat`          | `heatmap` | Weight from PM2.5, radius and intensity interpolated by zoom, opacity fades out by zoom 14 as circles take over; colors from the AQI tokens |
+| `sensor-clusters`      | `circle`  | Color = `step` over the cluster's mean PM2.5 at the EPA breakpoints; radius = `step` over `point_count`                                     |
+| `sensor-cluster-count` | `symbol`  | `point_count_abbreviated` with a halo for legibility on every color                                                                         |
+| `sensor-points`        | `circle`  | Color = `step` over PM2.5; radius `interpolate`d by zoom; hover enlarges radius and stroke via `feature-state`                              |
+| `sensor-labels`        | `symbol`  | AQI number at zoom 11.5 and above: the non-color cue for the circles                                                                        |
+
+Colors come from the same Chakra semantic tokens as everything else (`useChartColors`), so a light/dark switch
+re-paints the layers. The basemap also swaps between `light-v11` and `dark-v11`, and the layers survive the style
+change (checked in the browser).
+
+**Interactions** (`useSensorInteractions`)
+
+- **Hover:** GPU `feature-state` highlight, a pointer cursor, and a transient popup.
+- **Click / tap a sensor:** pins the popup (touch devices have no hover) until you click empty map or close it.
+- **Click a cluster:** `getClusterExpansionZoom` then `easeTo`, skipping the animation when the user prefers
+  reduced motion.
+- **Layer toggles** for sensors and heat, and an AQI legend.
+- Station markers keep full keyboard access, and focus returns to the marker when the drawer closes.
+
+**Performance work**
+
+- Dense data lives in GPU layers instead of DOM nodes (a DOM `Marker` per sensor would not scale past a few hundred).
+- Clustering runs in Mapbox's worker; only the clusters and unclustered points in view are drawn.
+- Hover uses `feature-state`, and state updates fire only when the hovered feature changes, so mouse movement neither
+  re-renders React nor re-parses the source. Tested in `useSensorInteractions.test.ts`.
+- The GeoJSON is `useMemo`-ed and the query keeps referential equality across identical refetches, so sources aren't
+  re-parsed unless data changed. Layer specs are rebuilt only when theme colors or the sensor count change.
+- The heat layer stops drawing at zoom 15 and fades out from 11, and labels only appear at 11.5+.
+- **Density normalization.** Heatmap density grows with the number of points, not PM2.5, so at thousands of sensors it
+  saturated to solid "very unhealthy" purple in the stress test. Intensity is now scaled by
+  `(180 / count)^0.75` (`heatIntensityScale`, tuned by eye and unit-tested).
+- `minZoom` and `maxBounds` keep the user inside the valley, so tiles elsewhere are never requested.
+- `mapbox-gl` is a lazy chunk (510 kB gzip) loaded only when the Overview shows a map with a token.
+
+**Measuring.** Run with 5,000 simulated sensors and record a pan/zoom in the browser's Performance panel:
+
+```bash
+VITE_USE_MOCK_DATA=true VITE_MOCK_SENSOR_COUNT=5000 npm run dev
+```
+
+I confirmed 5,000 sensors load, cluster (clusters of several hundred) and render with no console errors. I did **not**
+capture frame-time numbers (my test browser is hidden and software-rendered, so they wouldn't mean anything); if you
+want a number to quote, take it from the Performance panel on your machine.
+
+**Limits worth knowing**
+
+- The heat layer is a _relative hotspot_ view (PM-weighted sensor density), not an interpolated absolute PM2.5
+  surface. A true surface would need interpolation (IDW/kriging) or a raster source.
+- Sensor circles and the heat layer can't be focused with the keyboard. The accessible equivalents are the station
+  buttons, the station table, and a text summary plus category-count table under the map.
 
 ### ApexCharts (via react-apexcharts): live and dashboard widgets
 
@@ -223,7 +274,7 @@ analysis rather than live data.
 
 ## Testing
 
-`npm test` runs Vitest + React Testing Library (71 tests):
+`npm test` runs Vitest + React Testing Library (90 tests):
 
 - AQI category boundaries (including EPA one-decimal truncation), AQI interpolation, and color/shape uniqueness
 - Mock provider: determinism, station filtering, inversion shape (buildup, peak, clearing), temperature coverage
@@ -231,8 +282,9 @@ analysis rather than live data.
 - Provider selection, PurpleAir adapter (EPA correction, channel QC, area aggregation, chunking, daily history, error mapping), freshness helpers
 - Derivations (Mountain-time day bucketing, calendar grid, quartiles) and the live-append hook
 - `DataState` loading, error + retry, empty, stale and cached-data states
+- Map logic: GeoJSON conversion, AQI color expressions, layer definitions, heat normalization, and hover/pin/cluster-zoom behavior (against a fake map)
 
-The Mapbox map and Plotly/Apex canvases are not unit-tested (they need WebGL/canvas); they were exercised manually in a browser.
+The rendered Mapbox map and Plotly/Apex canvases are not unit-tested (they need WebGL/canvas); they were exercised manually in a browser, while the map's logic is tested separately as above.
 
 ## Deployment
 
@@ -250,6 +302,10 @@ URLs (`#trends`), so there are no server rewrite rules to configure.
 every PR (good for a portfolio and for reviewers), the ability to add a small server-side proxy so the PurpleAir key
 never reaches the browser, and environment variables managed outside the repo. If you only want a quick public demo
 on keyless data, GitHub Pages is fine.
+
+**For a portfolio demo that shows the map layers:** Open-Meteo has no individual sensors, so it shows only the five
+station markers. Deploy with `VITE_USE_MOCK_DATA=true` (the header shows a "Demo data" badge) or with PurpleAir behind
+the proxy below, so the sensor layers, clusters and heat layer appear.
 
 ### Deploying to Vercel
 

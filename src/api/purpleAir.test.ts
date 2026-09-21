@@ -87,7 +87,7 @@ function setup(historyRows: (url: URL) => unknown = () => historyTable([NOW - 3_
 
 describe('purpleair provider', () => {
   it('is disabled without a key and rejects', async () => {
-    const pa = createPurpleAirProvider(undefined);
+    const pa = createPurpleAirProvider('');
     expect(pa.enabled).toBe(false);
     await expect(pa.getSeries('24h')).rejects.toBeInstanceOf(ProviderDisabledError);
   });
@@ -165,5 +165,48 @@ describe('purpleair provider', () => {
     await expect(make(403).getStations()).rejects.toThrow(/rejected the API key/);
     await expect(make(402).getStations()).rejects.toThrow(/points are exhausted/);
     await expect(make(500).getStations()).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe('purpleair sensors for the map', () => {
+  it('returns healthy sensors with EPA-corrected PM2.5, skipping failing and missing-humidity ones', async () => {
+    const table = {
+      fields: [
+        'sensor_index',
+        'name',
+        'latitude',
+        'longitude',
+        'humidity',
+        'pm2.5_cf_1_a',
+        'pm2.5_cf_1_b',
+      ],
+      data: [
+        [1, 'Rose Park', 40.79, -111.93, 40, 20, 20], // ok → 0.52*20 - 0.086*40 + 5.75 = 12.7
+        [2, null, 40.7, -111.9, 40, 5, 90], // channels disagree
+        [3, 'No RH', 40.6, -111.9, null, 10, 10], // no humidity → cannot correct
+      ],
+    };
+    const impl = (async () => new Response(JSON.stringify(table))) as typeof fetch;
+    const pa = createPurpleAirProvider('key', impl, () => NOW);
+    const sensors = await pa.getSensors!();
+    expect(sensors).toHaveLength(1);
+    expect(sensors[0]).toMatchObject({ id: 1, name: 'Rose Park', lat: 40.79, lon: -111.93 });
+    expect(sensors[0]?.pm25).toBeCloseTo(12.7, 1);
+  });
+
+  it('shares one discovery call between stations and sensors, and refreshes after the TTL', async () => {
+    let now = NOW;
+    let calls = 0;
+    const impl = (async () => {
+      calls++;
+      return new Response(JSON.stringify(SENSOR_TABLE));
+    }) as typeof fetch;
+    const pa = createPurpleAirProvider('key', impl, () => now);
+    await pa.getStations();
+    await pa.getSensors!();
+    expect(calls).toBe(1);
+    now += 11 * 60_000;
+    await pa.getSensors!();
+    expect(calls).toBe(2);
   });
 });

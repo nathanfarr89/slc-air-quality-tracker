@@ -8,6 +8,12 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test-setup.ts'],
-    env: { VITE_USE_MOCK_DATA: 'true' },
+    // Hermetic: never let a developer's .env.local (keys, tokens) leak into tests.
+    env: {
+      VITE_USE_MOCK_DATA: 'true',
+      VITE_PURPLEAIR_API_KEY: '',
+      VITE_MAPBOX_TOKEN: '',
+      VITE_MOCK_SENSOR_COUNT: '',
+    },
   },
 });

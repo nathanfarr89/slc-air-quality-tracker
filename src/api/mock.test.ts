@@ -60,7 +60,7 @@ describe('provider selection', () => {
 
 describe('PurpleAir stub', () => {
   it('is disabled without a key and rejects', async () => {
-    const pa = createPurpleAirProvider(undefined);
+    const pa = createPurpleAirProvider('');
     expect(pa.enabled).toBe(false);
     await expect(pa.getStations()).rejects.toBeInstanceOf(ProviderDisabledError);
   });
@@ -80,5 +80,19 @@ describe('freshness', () => {
       Date.parse('2026-01-01T00:00:00Z'),
     );
     expect(latestTimestamp([])).toBeUndefined();
+  });
+});
+
+describe('mock sensors', () => {
+  it('returns the requested number of deterministic sensors inside the valley', async () => {
+    const p = createMockProvider({ now: () => NOW, latencyMs: 0, sensorCount: 50 });
+    const a = await p.getSensors!();
+    expect(a).toHaveLength(50);
+    expect(a).toEqual(await p.getSensors!());
+    expect(new Set(a.map((s) => s.id)).size).toBe(50);
+    expect(a.every((s) => s.lat > 40.3 && s.lat < 41 && s.lon < -111.7 && s.lon > -112.1)).toBe(
+      true,
+    );
+    expect(a.every((s) => s.pm25 >= 0.5)).toBe(true);
   });
 });

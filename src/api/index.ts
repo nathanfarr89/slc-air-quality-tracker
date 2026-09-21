@@ -12,11 +12,16 @@ export { STATIONS } from './stations';
 export interface ProviderConfig {
   useMock: boolean;
   purpleAirKey?: string;
+  mockSensorCount?: number;
 }
 
 /** The one place a data source is chosen: mock flag, then PurpleAir if a key is set, else Open-Meteo. */
-export function createProvider({ useMock, purpleAirKey }: ProviderConfig): AirQualityProvider {
-  if (useMock) return createMockProvider();
+export function createProvider({
+  useMock,
+  purpleAirKey,
+  mockSensorCount,
+}: ProviderConfig): AirQualityProvider {
+  if (useMock) return createMockProvider({ sensorCount: mockSensorCount });
   if (purpleAirKey) return createPurpleAirProvider(purpleAirKey);
   return createOpenMeteoProvider();
 }
@@ -24,4 +29,5 @@ export function createProvider({ useMock, purpleAirKey }: ProviderConfig): AirQu
 export const provider = createProvider({
   useMock: import.meta.env.VITE_USE_MOCK_DATA === 'true',
   purpleAirKey: import.meta.env.VITE_PURPLEAIR_API_KEY,
+  mockSensorCount: Number(import.meta.env.VITE_MOCK_SENSOR_COUNT) || undefined,
 });

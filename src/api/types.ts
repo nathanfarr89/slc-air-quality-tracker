@@ -20,6 +20,17 @@ export interface StationSeries {
   readings: Reading[];
 }
 
+/** A single physical (or, in mock mode, simulated) sensor with its latest reading. Drives the map's GeoJSON layers. */
+export interface Sensor {
+  id: number;
+  name: string;
+  lat: number;
+  lon: number;
+  pm25: number;
+  /** ISO-8601 UTC time of the reading. */
+  t: string;
+}
+
 export type SourceId = 'open-meteo' | 'mock' | 'purpleair';
 
 /**
@@ -32,6 +43,8 @@ export interface AirQualityProvider {
   /** Floor (ms) for background and live polling, for sources with rate limits or metered usage. */
   readonly minPollMs?: number;
   getStations(): Promise<Station[]>;
+  /** Latest reading per individual sensor. Optional: modeled sources (Open-Meteo) have no sensors. */
+  getSensors?(): Promise<Sensor[]>;
   /** Hourly readings for the last `range`, oldest first, one series per station. */
   getSeries(range: SeriesRange, stationIds?: string[]): Promise<StationSeries[]>;
   /** Hourly readings for the past `days` days, oldest first (used by the History view). */

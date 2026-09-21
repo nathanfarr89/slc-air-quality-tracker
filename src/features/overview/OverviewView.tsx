@@ -3,7 +3,7 @@ import { Grid, Heading, VStack } from '@chakra-ui/react';
 import { isStale, latestTimestamp } from '../../api';
 import { DataState } from '../../components/DataState';
 import { latestReadings } from '../../lib/derive';
-import { useTimeSeries } from '../../hooks/queries';
+import { useSensors, useTimeSeries } from '../../hooks/queries';
 import { KpiCards } from './KpiCards';
 import { MapSection } from './MapSection';
 import { StationDrawer } from './StationDrawer';
@@ -11,6 +11,7 @@ import { StationTable } from './StationTable';
 
 export default function OverviewView() {
   const query = useTimeSeries('24h');
+  const sensors = useSensors();
   const [selectedId, setSelectedId] = useState<string>();
   const trigger = useRef<HTMLElement | null>(null);
   const select = (id: string, el: HTMLElement) => {
@@ -41,7 +42,13 @@ export default function OverviewView() {
           gap="4"
           alignItems="start"
         >
-          <MapSection stations={now} selectedId={selectedId} onSelect={select} />
+          <MapSection
+            stations={now}
+            sensors={sensors.data}
+            sensorsFailed={sensors.isError}
+            selectedId={selectedId}
+            onSelect={select}
+          />
           <KpiCards series={series} />
         </Grid>
         <Heading as="h2" size="md">

@@ -1,6 +1,13 @@
 import { ApiError, ProviderDisabledError } from './errors';
 import { pickStations, STATIONS } from './stations';
-import type { AirQualityProvider, Reading, SeriesRange, Station, StationSeries } from './types';
+import type {
+  AirQualityProvider,
+  Reading,
+  Sensor,
+  SeriesRange,
+  Station,
+  StationSeries,
+} from './types';
 
 const BASE = 'https://api.purpleair.com/v1';
 const HOUR = 3_600_000;
@@ -19,6 +26,7 @@ const AB_MAX_REL = 0.7;
 const HOURLY_CHUNK_MS = 10 * DAY;
 const DAILY_CHUNK_MS = 180 * DAY;
 const CONCURRENCY = 3;
+const DISCOVERY_TTL_MS = 10 * 60_000;
 
 type Cell = number | string | null;
 interface Table {
@@ -134,52 +142,85 @@ export function createPurpleAirProvider(
     return (await res.json()) as Table;
   }
 
-  // Sensor discovery is one metered call; do it once per session (cleared on failure so it can retry).
-  let discovery: Promise<Map<string, number[]>> | undefined;
-  function discover(): Promise<Map<string, number[]>> {
-    discovery ??= get('/sensors', {
-      fields: 'latitude,longitude,humidity,pm2.5_cf_1_a,pm2.5_cf_1_b',
-      location_type: 0, // outdoor only
-      max_age: 3600, // reported in the last hour
-      ...BBOX,
-    })
-      .then((table) => {
-        const sensors = toRows(table).flatMap((r) => {
-          const [index, lat, lon, a, b] = [
-            num(r.sensor_index),
-            num(r.latitude),
-            num(r.longitude),
-            num(r['pm2.5_cf_1_a']),
-            num(r['pm2.5_cf_1_b']),
-          ];
-          const ok =
-            index !== undefined &&
-            lat !== undefined &&
-            lon !== undefined &&
-            a !== undefined &&
-            b !== undefined &&
-            channelsAgree(a, b);
-          return ok ? [{ index, lat, lon }] : [];
-        });
-        const areas = new Map<string, number[]>();
-        for (const s of STATIONS) {
-          const nearest = sensors
-            .map((x) => ({ index: x.index, km: haversineKm(s.lat, s.lon, x.lat, x.lon) }))
-            .filter((x) => x.km <= AREA_RADIUS_KM)
-            .sort((p, q) => p.km - q.km)
-            .slice(0, SENSORS_PER_AREA);
-          if (nearest.length)
-            areas.set(
-              s.id,
-              nearest.map((x) => x.index),
-            );
-        }
-        return areas;
+  // Sensor discovery is one metered call. Cache it (10 min) and clear on failure so it can retry.
+  interface Discovery {
+    areas: Map<string, number[]>;
+    sensors: Sensor[];
+    at: number;
+  }
+  let discovery: Promise<Discovery> | undefined;
+  let discoveredAt = 0;
+  function discover(): Promise<Discovery> {
+    if (discovery && now() - discoveredAt > DISCOVERY_TTL_MS) discovery = undefined;
+    if (!discovery) {
+      discoveredAt = now();
+      discovery = get('/sensors', {
+        fields: 'name,latitude,longitude,humidity,pm2.5_cf_1_a,pm2.5_cf_1_b',
+        location_type: 0, // outdoor only
+        max_age: 3600, // reported in the last hour
+        ...BBOX,
       })
-      .catch((e: unknown) => {
-        discovery = undefined;
-        throw e;
-      });
+        .then((table): Discovery => {
+          const at = now();
+          const healthy = toRows(table).flatMap((r) => {
+            const [index, lat, lon, a, b, rh] = [
+              num(r.sensor_index),
+              num(r.latitude),
+              num(r.longitude),
+              num(r['pm2.5_cf_1_a']),
+              num(r['pm2.5_cf_1_b']),
+              num(r.humidity),
+            ];
+            const ok =
+              index !== undefined &&
+              lat !== undefined &&
+              lon !== undefined &&
+              a !== undefined &&
+              b !== undefined &&
+              channelsAgree(a, b);
+            if (!ok) return [];
+            const name = typeof r.name === 'string' && r.name ? r.name : `Sensor ${index}`;
+            // The EPA correction needs RH; sensors without it still count for area discovery.
+            const pm25 =
+              rh === undefined
+                ? undefined
+                : Math.round(epaCorrectedPm25((a + b) / 2, rh) * 10) / 10;
+            return [{ index, lat, lon, name, pm25 }];
+          });
+          const areas = new Map<string, number[]>();
+          for (const s of STATIONS) {
+            const nearest = healthy
+              .map((x) => ({ index: x.index, km: haversineKm(s.lat, s.lon, x.lat, x.lon) }))
+              .filter((x) => x.km <= AREA_RADIUS_KM)
+              .sort((p, q) => p.km - q.km)
+              .slice(0, SENSORS_PER_AREA);
+            if (nearest.length)
+              areas.set(
+                s.id,
+                nearest.map((x) => x.index),
+              );
+          }
+          const sensors = healthy.flatMap((x) =>
+            x.pm25 === undefined
+              ? []
+              : [
+                  {
+                    id: x.index,
+                    name: x.name,
+                    lat: x.lat,
+                    lon: x.lon,
+                    pm25: x.pm25,
+                    t: new Date(at).toISOString(),
+                  },
+                ],
+          );
+          return { areas, sensors, at };
+        })
+        .catch((e: unknown) => {
+          discovery = undefined;
+          throw e;
+        });
+    }
     return discovery;
   }
 
@@ -220,7 +261,7 @@ export function createPurpleAirProvider(
     average: 60 | 1440,
     ids?: string[],
   ): Promise<StationSeries[]> {
-    const areas = await discover();
+    const { areas } = await discover();
     const stations = pickStations(ids).filter((s) => areas.has(s.id));
     const end = now();
     const jobs = stations.flatMap((station) =>
@@ -257,8 +298,11 @@ export function createPurpleAirProvider(
     // Each call is metered; keep background refreshes infrequent.
     minPollMs: 5 * 60_000,
     async getStations(): Promise<Station[]> {
-      const areas = await discover();
+      const { areas } = await discover();
       return STATIONS.filter((s) => areas.has(s.id));
+    },
+    async getSensors(): Promise<Sensor[]> {
+      return (await discover()).sensors;
     },
     getSeries: (range, ids) => series(RANGE_HOURS[range] * HOUR, 60, ids),
     // Daily averages: one cheap request per sensor covers the whole year.

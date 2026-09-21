@@ -1,5 +1,12 @@
 import { pickStations, STATIONS } from './stations';
-import type { AirQualityProvider, Reading, SeriesRange, Station, StationSeries } from './types';
+import type {
+  AirQualityProvider,
+  Reading,
+  Sensor,
+  SeriesRange,
+  Station,
+  StationSeries,
+} from './types';
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -98,15 +105,49 @@ function sample(station: Station, t: number, episodes: Episode[]): Reading {
   };
 }
 
+/**
+ * Simulated dense sensor network: inverse-distance-weighted from the five station values, with per-sensor
+ * noise and a lower factor on the east bench (above the cold pool). Deterministic per index.
+ */
+function buildSensors(count: number, current: number): Sensor[] {
+  const hourMs = Math.floor(current / HOUR) * HOUR;
+  const episodes = buildEpisodes(current);
+  const stationNow = STATIONS.map((s) => ({ s, pm: sample(s, hourMs, episodes).pm25 }));
+  return Array.from({ length: count }, (_, i) => {
+    const lat = 40.38 + hash01(i, 1) * 0.55;
+    const lon = -112.03 + hash01(i, 2) * 0.27;
+    let num = 0;
+    let den = 0;
+    for (const { s, pm } of stationNow) {
+      const km2 = ((lat - s.lat) * 111) ** 2 + ((lon - s.lon) * 84) ** 2;
+      num += pm / (km2 + 4);
+      den += 1 / (km2 + 4);
+    }
+    const bench = lon > -111.84 ? 0.78 : 1;
+    const pm25 = Math.max(0.5, (num / den) * bench * (0.85 + hash01(i, 3) * 0.3));
+    return {
+      id: i + 1,
+      name: `Sensor ${i + 1}`,
+      lat: Math.round(lat * 1e5) / 1e5,
+      lon: Math.round(lon * 1e5) / 1e5,
+      pm25: Math.round(pm25 * 10) / 10,
+      t: new Date(hourMs).toISOString(),
+    };
+  });
+}
+
 export interface MockOptions {
   now?: () => number;
   /** Simulated network latency so loading states are visible in demos. */
   latencyMs?: number;
+  /** Number of simulated sensors for the map layers (raise it to stress-test rendering). */
+  sensorCount?: number;
 }
 
 export function createMockProvider({
   now = Date.now,
   latencyMs = 350,
+  sensorCount = 180,
 }: MockOptions = {}): AirQualityProvider {
   const delay = () =>
     latencyMs ? new Promise((r) => setTimeout(r, latencyMs)) : Promise.resolve();
@@ -137,6 +178,10 @@ export function createMockProvider({
     async getStations() {
       await delay();
       return [...STATIONS];
+    },
+    async getSensors() {
+      await delay();
+      return buildSensors(sensorCount, now());
     },
     async getSeries(range, ids) {
       await delay();
