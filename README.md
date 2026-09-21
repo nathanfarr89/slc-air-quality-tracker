@@ -366,9 +366,26 @@ client uses it when `VITE_PURPLEAIR_PROXY_URL` is set, so the browser never hold
   that, each request would be unique and never cache. Errors are never cached.
 - **Errors.** Upstream 402/403/429 pass through (the client shows actionable messages); everything else becomes a
   generic 502. Upstream error bodies are not forwarded.
-- **Limits.** It is still a public endpoint: someone could craft many _distinct_ valid requests to defeat the cache. The
-  allowlist bounds the damage, but for a hard guarantee add rate limiting (for example Vercel's WAF rate limit rules)
-  and watch your point balance.
+- **Rate limiting.** It is still a public endpoint: someone could craft many _distinct_ valid requests to defeat the
+  cache. A Vercel Firewall rule limits `/api/purpleair` to **150 requests per minute per IP** and answers HTTP 429
+  beyond that (verified: a 170-request burst got 150 through and 20 blocked, while the rest of the site stayed up). For
+  scale, a heavy real session (Overview, Trends at 7d and 30d, then History) makes about 67 requests in 30 seconds, so
+  normal use has more than 2× headroom. The client shows "Too many requests. Wait a minute, then retry." if a
+  visitor ever hits it. The limit is per IP, so a distributed attacker can still spend points, but each valid request
+  is small and bounded by the allowlist; keep an eye on your point balance.
+
+  The rule lives in Vercel, not in this repo, so recreate it if you move projects:
+
+  ```bash
+  vercel firewall rules add "Rate limit PurpleAir proxy" \
+    --condition '{"type":"path","op":"pre","value":"/api/purpleair"}' \
+    --action rate_limit --rate-limit-requests 150 --rate-limit-window 60 \
+    --rate-limit-keys ip --rate-limit-algo fixed_window --yes
+  vercel firewall publish --yes
+  ```
+
+  To change the limit, pass **all** the rate-limit flags together to `vercel firewall rules edit` (passing only
+  `--rate-limit-requests` silently left the old value in place), then `vercel firewall publish`.
 
 ## Production readiness
 
@@ -384,7 +401,7 @@ Status of what's needed before this should be called production-ready.
 | **Git repo and CI**                 | Done    | GitHub Actions runs format, typecheck, lint, test and build on Node 22 and 24. Still to do in GitHub: require the checks via branch protection                                               |
 | **React error boundary**            | Done    | App-level, per-view and map-level boundaries, tested; wire `onError` to an error-monitoring service when you add one                                                                         |
 | **Live-API verification**           | To do   | Open-Meteo and PurpleAir adapters are unit-tested with a fake `fetch` but haven't been run against the real services; test both                                                              |
-| **PurpleAir key proxy**             | Done    | Vercel Function with allowlist and CDN caching (see above). Add rate limiting for a hard cost guarantee                                                                                      |
+| **PurpleAir key proxy**             | Done    | Vercel Function with allowlist, CDN caching and a 150 req/min per-IP firewall rate limit (see above)                                                                                         |
 | **Mapbox token hygiene**            | To do   | Use a production-only public token, restrict it by URL, and monitor usage in the Mapbox dashboard                                                                                            |
 | **Accessibility audit**             | To do   | Built with keyboard/ARIA support and checked manually in a browser, but no axe/Lighthouse run and no screen-reader pass yet                                                                  |
 | End-to-end tests                    | To do   | Playwright for tabs, drawer open/close/focus, live toggle, dark mode; the map itself has no automated test                                                                                   |

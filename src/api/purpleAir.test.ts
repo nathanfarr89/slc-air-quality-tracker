@@ -171,6 +171,7 @@ describe('purpleair provider', () => {
       );
     await expect(make(403).getStations()).rejects.toThrow(/rejected the API key/);
     await expect(make(402).getStations()).rejects.toThrow(/points are exhausted/);
+    await expect(make(429).getStations()).rejects.toThrow(/Too many requests/);
     await expect(make(500).getStations()).rejects.toBeInstanceOf(ApiError);
   });
 });

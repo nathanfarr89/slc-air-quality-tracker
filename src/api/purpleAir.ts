@@ -160,6 +160,9 @@ export function createPurpleAirProvider(
     if (res.status === 402) {
       throw new ApiError('PurpleAir API points are exhausted (402).', 402);
     }
+    if (res.status === 429) {
+      throw new ApiError('Too many requests. Wait a minute, then retry.', 429);
+    }
     if (!res.ok) throw new ApiError(`PurpleAir request failed (${res.status})`, res.status);
     return (await res.json()) as Table;
   }
