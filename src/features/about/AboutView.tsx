@@ -96,7 +96,7 @@ export default function AboutView() {
       </Section>
 
       <Section title="AQI categories (PM2.5)">
-        <Table.ScrollArea>
+        <Table.ScrollArea tabIndex={0} role="region" aria-label="AQI categories (scrollable)">
           <Table.Root size="sm">
             <Table.Caption srOnly>AQI categories with PM2.5 ranges</Table.Caption>
             <Table.Header>

@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from 'react';
-import Chart from 'react-apexcharts';
+import { ApexChart as Chart } from '../../components/LazyChart';
 import type { ApexOptions } from 'apexcharts';
 import { Box, Heading, SimpleGrid, Text } from '@chakra-ui/react';
 import { getAqiCategory, pm25ToAqi, type StationSeries } from '../../api';
@@ -23,7 +23,7 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
       minW="0"
     >
       <Heading
-        as="h3"
+        as="h2"
         size="xs"
         color="fg.muted"
         textTransform="uppercase"

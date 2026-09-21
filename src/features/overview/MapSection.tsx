@@ -1,11 +1,12 @@
 import { lazy, Suspense } from 'react';
 import { Alert, Code, Skeleton, Text } from '@chakra-ui/react';
 import type { Sensor } from '../../api';
+import { loadMapPanel } from './mapChunk';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 import type { StationNow } from '../../lib/derive';
 
 // mapbox-gl is the heaviest dependency: load it only when the Overview is shown with a token.
-const MapPanel = lazy(() => import('./MapPanel'));
+const MapPanel = lazy(loadMapPanel);
 
 interface Props {
   stations: StationNow[];

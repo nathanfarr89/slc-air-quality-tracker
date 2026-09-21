@@ -4,6 +4,8 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [react()],
+  // Public repo, so shipping source maps exposes nothing new and gives readable production stack traces.
+  build: { sourcemap: true },
   test: {
     environment: 'jsdom',
     globals: true,

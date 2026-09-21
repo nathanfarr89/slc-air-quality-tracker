@@ -67,7 +67,7 @@ export const AQI_CATEGORIES: readonly AqiCategory[] = [
     pmMin: 55.5,
     pmMax: 125.4,
     color: '#ff0000',
-    textColor: '#ffffff',
+    textColor: '#000000',
     shape: 'triangle',
     advice:
       'Everyone may begin to experience health effects; sensitive groups may see more serious effects.',

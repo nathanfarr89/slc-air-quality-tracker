@@ -1,10 +1,11 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Grid, Heading, VStack } from '@chakra-ui/react';
 import { isStale, latestTimestamp } from '../../api';
 import { DataState } from '../../components/DataState';
 import { latestReadings } from '../../lib/derive';
 import { useSensors, useTimeSeries } from '../../hooks/queries';
 import { KpiCards } from './KpiCards';
+import { preloadMap } from './mapChunk';
 import { MapSection } from './MapSection';
 import { StationDrawer } from './StationDrawer';
 import { StationTable } from './StationTable';
@@ -12,6 +13,7 @@ import { StationTable } from './StationTable';
 export default function OverviewView() {
   const query = useTimeSeries('24h');
   const sensors = useSensors();
+  useEffect(preloadMap, []);
   const [selectedId, setSelectedId] = useState<string>();
   const trigger = useRef<HTMLElement | null>(null);
   const select = (id: string, el: HTMLElement) => {

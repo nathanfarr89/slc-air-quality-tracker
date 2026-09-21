@@ -25,7 +25,9 @@ const AB_MAX_REL = 0.7;
 /** PurpleAir documents these per-request span limits: 1-hour averages 14 days, daily averages 1 year. Stay well inside. */
 const HOURLY_CHUNK_MS = 10 * DAY;
 const DAILY_CHUNK_MS = 180 * DAY;
+/** Direct calls stay gentle (metered); the cached proxy can take more in parallel. */
 const CONCURRENCY = 3;
+const PROXIED_CONCURRENCY = 6;
 const DISCOVERY_TTL_MS = 10 * 60_000;
 /** History windows end on a 10-minute boundary (see series()). */
 export const CACHE_BUCKET_MS = 10 * 60_000;
@@ -295,7 +297,7 @@ export function createPurpleAirProvider(
     const jobs = stations.flatMap((station) =>
       (areas.get(station.id) ?? []).map((index) => ({ station, index })),
     );
-    const results = await mapLimit(jobs, CONCURRENCY, (j) =>
+    const results = await mapLimit(jobs, proxied ? PROXIED_CONCURRENCY : CONCURRENCY, (j) =>
       sensorReadings(j.index, end - windowMs, end, average),
     );
     return stations.map((station) => ({

@@ -30,7 +30,7 @@ export function ChartCard({ title, description, label, children, table, minH }: 
           {description}
         </Text>
       )}
-      <Box role="img" aria-label={label} mt="3" minH={minH}>
+      <Box role="group" aria-label={label} mt="3" minH={minH}>
         {children}
       </Box>
       {table}

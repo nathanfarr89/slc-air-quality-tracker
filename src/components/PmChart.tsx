@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import Chart from 'react-apexcharts';
+import { ApexChart as Chart } from './LazyChart';
 import type { ApexOptions } from 'apexcharts';
 import { AQI_CATEGORIES, type Reading } from '../api';
 import { mtWallMs } from '../lib/format';

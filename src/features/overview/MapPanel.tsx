@@ -24,6 +24,15 @@ const MAX_BOUNDS: [[number, number], [number, number]] = [
   [-111.3, 41.3],
 ];
 
+/**
+ * Mapbox marks every marker wrapper role="img" with a generic label. Ours contains a real focusable button,
+ * and an image role may not contain interactive controls, so drop the role and let the button speak.
+ */
+const stripMarkerRole = (marker: { getElement(): HTMLElement } | null) => {
+  marker?.getElement().removeAttribute('role');
+  marker?.getElement().removeAttribute('aria-label');
+};
+
 const MarkerButton = chakra('button', {
   base: {
     display: 'flex',
@@ -157,6 +166,7 @@ export default function MapPanel({
             const selected = station.id === selectedId;
             return (
               <Marker
+                ref={stripMarkerRole}
                 key={station.id}
                 longitude={station.lon}
                 latitude={station.lat}
@@ -164,11 +174,12 @@ export default function MapPanel({
               >
                 <MarkerButton
                   type="button"
-                  aria-label={`${station.name}: PM2.5 ${reading.pm25.toFixed(1)} micrograms per cubic meter, AQI ${aqi}, ${category.label}. Open details.`}
+                  aria-label={`AQI ${aqi} ${station.name}. PM2.5 ${reading.pm25.toFixed(1)} micrograms per cubic meter, ${category.label}. Open details.`}
                   aria-haspopup="dialog"
                   onClick={(e) => onSelect(station.id, e.currentTarget)}
                 >
                   <AqiGlyph category={category} size={selected ? 46 : 38} value={aqi} />
+                  {/* Whitespace node: keeps the DOM text "112 Downtown SLC" (not "112Downtown SLC"), matching the accessible name. Invisible in a flex column. */}{' '}
                   <Text
                     as="span"
                     fontSize="xs"

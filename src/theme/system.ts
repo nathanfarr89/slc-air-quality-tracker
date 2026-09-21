@@ -21,6 +21,10 @@ export const system = createSystem(
   defineConfig({
     globalCss: {
       body: { bg: 'bg', color: 'fg' },
+      // Apex 7 styles tooltip titles with a 55%-opacity grey variable (4.0:1 on white); use a readable one in light mode. (!important: Chakra global CSS lives in @layer base and would otherwise lose to Apex's unlayered stylesheet.)
+      '.apexcharts-tooltip.apexcharts-theme-light': {
+        '--apx-tt-color-muted': '#3f3f46 !important',
+      },
       ':focus-visible': { outline: '3px solid', outlineColor: 'brand.focus', outlineOffset: '2px' },
     },
     theme: {
