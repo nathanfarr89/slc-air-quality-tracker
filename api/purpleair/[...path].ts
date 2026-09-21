@@ -1,4 +1,4 @@
-import { handleProxy } from '../../server/purpleairProxy';
+import { handleProxy } from '../../server/purpleairProxy.js';
 
 // Server-only environment (no VITE_ prefix, so it is never bundled into the browser build).
 declare const process: { env: Record<string, string | undefined> };
