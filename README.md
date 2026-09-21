@@ -351,8 +351,18 @@ supports, also recorded in `engines`):
 - Read-only `GITHUB_TOKEN` permissions, a 10-minute timeout, and superseded runs on the same branch are cancelled.
 - The Node 24 job prints a gzip bundle-size table to the run summary and uploads `dist` as a 7-day artifact.
 - Tests are hermetic (no keys or tokens needed), and the build needs no secrets.
-- **Recommended repo setting:** in GitHub, enable branch protection on `main` and require the `Check (Node 22)` and
-  `Check (Node 24)` checks, so nothing merges red.
+- **Branch protection on `main`:** changes go through a pull request, and both `Check (Node 22)` and
+  `Check (Node 24)` must pass on a branch that is up to date with `main` before it can merge. No approvals are required
+  (a solo repo can't approve itself), stale approvals are dismissed on new pushes, review conversations must be
+  resolved, and force-pushes and branch deletion are blocked. Admins are not forced by the rule, so the repo owner can
+  still bypass it in an emergency. The rule lives in GitHub settings, not in the repo:
+
+  ```bash
+  gh api -X PUT repos/<owner>/<repo>/branches/main/protection --input protection.json
+  ```
+
+  with the required contexts `Check (Node 22)` and `Check (Node 24)`, `strict: true`, `enforce_admins: false`, one
+  `required_pull_request_reviews` block with 0 approvals, and force-push and deletion disabled.
 
 ## Performance and accessibility audit
 
