@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Alert, Code, Skeleton, Text } from '@chakra-ui/react';
 import type { Sensor } from '../../api';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
 import type { StationNow } from '../../lib/derive';
 
 // mapbox-gl is the heaviest dependency: load it only when the Overview is shown with a token.
@@ -33,17 +34,22 @@ export function MapSection(props: Props) {
     );
   }
   return (
-    <Suspense
-      fallback={
-        <Skeleton
-          h={{ base: '55vh', lg: '640px' }}
-          minH="340px"
-          rounded="lg"
-          aria-label="Loading map"
-        />
-      }
+    <ErrorBoundary
+      title="The map couldn’t be displayed"
+      description="The map failed to start, for example because WebGL isn’t available in this browser. Station readings are still available in the table below."
     >
-      <MapPanel {...props} />
-    </Suspense>
+      <Suspense
+        fallback={
+          <Skeleton
+            h={{ base: '55vh', lg: '640px' }}
+            minH="340px"
+            rounded="lg"
+            aria-label="Loading map"
+          />
+        }
+      >
+        <MapPanel {...props} />
+      </Suspense>
+    </ErrorBoundary>
   );
 }

@@ -13,6 +13,7 @@ import {
   Text,
 } from '@chakra-ui/react';
 import { provider } from './api';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { useColorMode } from './theme/colorMode';
 import AboutView from './features/about/AboutView';
 import OverviewView from './features/overview/OverviewView';
@@ -117,12 +118,15 @@ export default function App() {
           </Tabs.List>
           {/* Only the active panel is rendered, so inactive views don't poll or hold charts. */}
           <Tabs.Content value={view} p="0">
-            <Suspense fallback={<Skeleton h="600px" rounded="md" aria-label="Loading view" />}>
-              {view === 'overview' && <OverviewView />}
-              {view === 'trends' && <TrendsView />}
-              {view === 'history' && <HistoryView />}
-              {view === 'about' && <AboutView />}
-            </Suspense>
+            {/* Resets when the tab changes, so a crashed view never traps the user. */}
+            <ErrorBoundary resetKeys={[view]} title="This view couldn’t be displayed">
+              <Suspense fallback={<Skeleton h="600px" rounded="md" aria-label="Loading view" />}>
+                {view === 'overview' && <OverviewView />}
+                {view === 'trends' && <TrendsView />}
+                {view === 'history' && <HistoryView />}
+                {view === 'about' && <AboutView />}
+              </Suspense>
+            </ErrorBoundary>
           </Tabs.Content>
         </Tabs.Root>
       </Container>
