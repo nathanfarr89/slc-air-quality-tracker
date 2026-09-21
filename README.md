@@ -450,7 +450,11 @@ bundled into the public build (`.vercelignore` is a second guard for `vercel dep
 
    Do **not** set `VITE_PURPLEAIR_API_KEY` or `VITE_USE_MOCK_DATA` on a public host.
 
-3. Deploy, then add the production and preview URLs to the Mapbox token's allowed URLs.
+3. Deploy, then add the production URL to the Mapbox token's allowed URLs. Vercel also serves every deployment at its
+   own address (for example `slc-air-quality-tracker-<hash>-<team>.vercel.app`) and at branch aliases; **the map
+   background will not load on any address the token doesn't list**, while the sensor layers and station markers still
+   draw (they don't come from Mapbox). The app shows a message when Mapbox refuses it. Use the production alias, or add
+   the specific address to the token; broad wildcards such as `*.vercel.app` would let any Vercel site use your token.
 
 ### The PurpleAir proxy
 

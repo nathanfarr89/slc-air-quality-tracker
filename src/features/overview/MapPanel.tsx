@@ -9,6 +9,7 @@ import type { StationNow } from '../../lib/derive';
 import { formatMtDateTime } from '../../lib/format';
 import { useColorMode } from '../../theme/colorMode';
 import { MapControls } from './MapControls';
+import { describeMapError } from './mapError';
 import { SensorLayers } from './SensorLayers';
 import { INTERACTIVE_LAYERS, sensorsToGeoJSON, summarize } from './sensorLayerSpecs';
 import { useSensorInteractions } from './useSensorInteractions';
@@ -82,8 +83,9 @@ export default function MapPanel({
           <Alert.Content>
             <Alert.Title>The basemap couldn’t load</Alert.Title>
             <Alert.Description>
-              {mapError} Check <code>VITE_MAPBOX_TOKEN</code>. Station markers and the table below
-              still work.
+              {mapError} If you deployed this yourself, check the Mapbox token and that this page’s
+              address is in the token’s allowed URLs. Station markers, sensor layers and the table
+              below still work.
             </Alert.Description>
           </Alert.Content>
         </Alert.Root>
@@ -125,7 +127,7 @@ export default function MapPanel({
           cooperativeGestures={isMobile}
           interactiveLayerIds={hasSensors ? INTERACTIVE_LAYERS : []}
           cursor={cursor}
-          onError={(e) => setMapError(e.error.message)}
+          onError={(e) => setMapError(describeMapError(e.error))}
           style={{ width: '100%', height: '100%' }}
           {...handlers}
         >
