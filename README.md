@@ -6,11 +6,50 @@ A React + TypeScript dashboard for current and historical PM2.5 across the Salt 
 winter inversion episodes. It runs out of the box on keyless data (Open-Meteo) or fully offline on
 inversion-shaped fixtures.
 
-**Live demo:** https://slc-air-quality-tracker.vercel.app (real PurpleAir sensors via a server-side proxy)
+**Live:** https://slc-air-quality-tracker.vercel.app (real PurpleAir sensors via a server-side proxy)
+· **Winter inversion demo:** https://slc-air-quality-tracker.vercel.app/?demo (simulated data, so the app's core
+story is visible in any season; the header shows a "Demo data" badge and a link back to live data)
 
 **Views:** Overview (map, KPI cards, station drawer) · Trends (Apex time series, range + station filters, live
 polling) · History (Plotly: calendar heatmap, monthly box plot, PM2.5-vs-temperature scatter) · About/Data
 (sources, methodology, AQI legend).
+
+## Screenshots
+
+Captured from the deployed site. All but the last desktop shot use the `?demo` data (a multi-day inversion that
+builds, clears, and builds again, plus 180 simulated sensors); the "live" shot is real PurpleAir data.
+
+**Overview: map layers, KPI cards.** A GeoJSON source with clustering and a heatmap layer, colored by AQI category;
+station markers are real buttons.
+
+![Overview with the inversion demo: clustered sensor layer, heatmap, station markers and KPI cards](docs/screenshots/overview-inversion.png)
+
+**Station drawer.** Opens from a marker (or the table), with 24-hour stats and an Apex chart with AQI guides.
+
+![Station drawer with details and a 24 hour chart](docs/screenshots/station-drawer.png)
+
+**Trends.** Apex time series: an inversion building, clearing, and building again (dashed lines mark AQI categories).
+
+![Trends view with a 7 day multi-station PM2.5 chart](docs/screenshots/trends.png)
+
+**History (Plotly).** Calendar heatmap, monthly box plot, and PM2.5 vs. temperature.
+
+![History view with a calendar heatmap, box plot and scatter](docs/screenshots/history.png)
+
+**Dark mode.** One token set drives Chakra, Apex, Plotly and the Mapbox basemap.
+
+![Overview in dark mode](docs/screenshots/overview-dark.png)
+
+**Live data.** Real PurpleAir sensors (in September the valley is mostly "Good").
+
+![Overview with live PurpleAir data](docs/screenshots/overview-live.png)
+
+**Mobile.**
+
+<p>
+  <img src="docs/screenshots/mobile-overview.png" alt="Mobile overview with the map and layers" width="280">
+  <img src="docs/screenshots/mobile-drawer.png" alt="Mobile station drawer as a bottom sheet" width="280">
+</p>
 
 ## Setup
 
@@ -78,23 +117,26 @@ src/
   the AQI number, the legend and tables show the category name, and the Plotly scatter uses matching marker
   symbols per category.
 - **Accessibility.** Skip link, tab semantics with keyboard navigation, focus-visible rings, labelled markers
-  (station, value, AQI, category), `role="img"` + labels on charts, a collapsible data table under every chart,
+  (station, value, AQI, category), labelled `role="group"` wrappers on charts (an image role can't contain their focusable toolbars), a collapsible data table under every chart,
   and focus returned to the marker when the drawer closes.
 - **Time zones.** Charts show Mountain Time for every viewer (`lib/format.ts` re-expresses instants as Mountain
   wall-clock time for libraries that only do UTC/local), and daily aggregation uses Mountain-time days.
 
 ### Bundle size (production build, gzip)
 
-| Chunk                                | Raw        | Gzip      | Loaded                         |
-| ------------------------------------ | ---------- | --------- | ------------------------------ |
-| App shell (React, Chakra, Apex, app) | 1,251 kB   | 367 kB    | Initial                        |
-| Chakra system                        | 274 kB     | 72 kB     | Initial                        |
-| `HistoryView` (Plotly cartesian)     | 1,449 kB   | 478 kB    | On opening History             |
-| `mapbox-gl`                          | 1,839 kB   | 510 kB    | On Overview, only with a token |
-| `MapPanel` + CSS                     | 29 + 49 kB | 11 + 6 kB | On Overview, only with a token |
+| Chunk                                  | Raw        | Gzip      | Loaded                                    |
+| -------------------------------------- | ---------- | --------- | ----------------------------------------- |
+| App shell (React, TanStack Query, app) | 310 kB     | 97 kB     | Initial                                   |
+| Chakra UI + theme                      | 268 kB     | 70 kB     | Initial                                   |
+| `react-apexcharts` (ApexCharts)        | 944 kB     | 270 kB    | Right after first paint (lazy)            |
+| `mapbox-gl`                            | 1,839 kB   | 510 kB    | Prefetched on Overview, only with a token |
+| `MapPanel` + CSS                       | 29 + 49 kB | 11 + 6 kB | Prefetched on Overview, only with a token |
+| `HistoryView` (Plotly cartesian)       | 1,449 kB   | 478 kB    | On opening History                        |
 
-Initial JS is about 439 kB gzipped. Plotly and Mapbox are each lazy-loaded via `React.lazy`. Apex and Chakra are
-the remaining bulk of the initial load; see "What I'd do next".
+The initial JavaScript is about **170 kB gzipped** (it was ~439 kB before Apex was lazy-loaded, which cut the entry
+bundle from 1,251 kB to 310 kB). Apex, Mapbox and Plotly are each `React.lazy`-loaded; Mapbox is prefetched as soon as
+the Overview mounts so its download overlaps the data requests instead of waiting for them. Note that Vercel returns
+403 for `.map` files, so production source maps aren't served.
 
 ### PurpleAir adapter
 
@@ -256,7 +298,7 @@ setup). The whole History view is `React.lazy`-loaded, so Plotly is only downloa
 - Built-in zoom, pan, box-select, hover and the modebar are used as-is, as specified, rather than reimplemented.
 - The scatter uses **shape plus color** per category (circle, square, diamond, ...), reusing the color-blind-safe
   encoding from the map markers.
-- Every chart has `role="img"` with a text summary and a data-table fallback.
+- Every chart has a labelled `role="group"` wrapper with a text summary and a data-table fallback.
 
 **Benefits:** statistical chart types out of the box, rich hover templates, and powerful interaction (zoom, pan,
 select) with no custom code. **Limits:** heavier and slower to re-render than Apex, so it's used for static
@@ -285,7 +327,7 @@ analysis rather than live data.
 
 ## Testing
 
-`npm test` runs Vitest + React Testing Library (133 tests):
+`npm test` runs Vitest + React Testing Library (134 tests):
 
 - AQI category boundaries (including EPA one-decimal truncation), AQI interpolation, and color/shape uniqueness
 - Mock provider: determinism, station filtering, inversion shape (buildup, peak, clearing), temperature coverage
@@ -311,6 +353,64 @@ supports, also recorded in `engines`):
 - Tests are hermetic (no keys or tokens needed), and the build needs no secrets.
 - **Recommended repo setting:** in GitHub, enable branch protection on `main` and require the `Check (Node 22)` and
   `Check (Node 24)` checks, so nothing merges red.
+
+## Performance and accessibility audit
+
+Measured on the deployed site with Lighthouse 13.5 (headless Chrome, default throttling; the mobile profile
+simulates a slow phone) and axe-core 4 (WCAG 2.0/2.1/2.2 A and AA plus best practices).
+
+### Lighthouse
+
+| Profile |        |           Performance | Accessibility | Best practices | SEO |
+| ------- | ------ | --------------------: | ------------: | -------------: | --: |
+| Mobile  | before |                    44 |            98 |            100 | 100 |
+| Mobile  | after  | **73, 79** (two runs) |       **100** |            100 | 100 |
+| Desktop | before |                    99 |            98 |            100 | 100 |
+| Desktop | after  |               **100** |       **100** |            100 | 100 |
+
+Mobile metrics, before to after: First Contentful Paint 4.0 s to 1.7-2.1 s, Largest Contentful Paint 4.4 s to
+1.7-2.1 s, Total Blocking Time 1,330 ms to ~800 ms, Cumulative Layout Shift 0.03 to 0.007. Lighthouse varies from run
+to run (the two "after" mobile runs are shown for that reason).
+
+What changed the numbers:
+
+- **Lazy-loaded ApexCharts** (entry bundle 1,251 kB to 310 kB) and **prefetching the map chunk** on mount.
+- **Static intro text** on the Overview. Every above-the-fold paint used to wait for the data, so Largest Contentful
+  Paint was whenever the data arrived; now the page has real content from first paint.
+- **More parallel proxied requests** (6 instead of 3; the responses are CDN-cached).
+
+**What's still slow on mobile:** Total Blocking Time and Time to Interactive (about 8 s on the throttled profile) are
+dominated by evaluating `mapbox-gl` (1.8 MB), which can't be tree-shaken. The map is core to the product, so I left it
+rather than hide it behind an interaction.
+
+Reproduce (no install needed beyond Chrome):
+
+```bash
+npx lighthouse https://slc-air-quality-tracker.vercel.app --preset=desktop --view
+npx lighthouse https://slc-air-quality-tracker.vercel.app --view
+```
+
+### axe-core (11 states)
+
+Scanned: desktop light (overview, station drawer, trends, history, about), desktop dark (overview, trends, history,
+about), and mobile light (overview, trends).
+
+|        | Violations                                                                                                                                                                                                                                                                                                                                                                    |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Before | 5 rule types: heading order; interactive controls nested in `role="img"` (chart wrappers holding Apex/Plotly toolbars, and Mapbox's marker wrapper around the station buttons); insufficient contrast (Apex tooltip title, 4.0:1; white text on the red AQI shape, 4.0:1); a scrollable table region not reachable by keyboard; marker labels not matching their visible text |
+| After  | **0 in all 11 states**                                                                                                                                                                                                                                                                                                                                                        |
+
+Fixes: KPI headings to `h2`; chart wrappers to `role="group"`; Mapbox's generic marker `role`/label removed so the
+station button speaks for itself; marker names now start with the visible text ("AQI 112 Downtown SLC ..."); AQI
+text on the red shape black instead of white (5.25:1); Apex tooltip variable override; focusable, labelled table
+region; a real label element for the Trends time-range radio group; and the station drawer now opens with focus on
+its close button (it landed on the chart, showing a stray focus ring and tooltip).
+
+**What this does not prove.** Automated tools catch only a portion of accessibility problems. Text drawn over the
+map, SVG glyphs and chart canvases can't be checked by axe ("incomplete" results); I checked the AQI glyph text
+contrast by calculation instead (all six categories are at least 5.25:1). Keyboard operation of the drawer (open with
+Enter, focus on close, Escape, focus returns to the marker) was scripted, but I have **not** tested with a screen
+reader (NVDA, JAWS or VoiceOver) or on physical devices.
 
 ## Deployment
 
@@ -403,16 +503,16 @@ Status of what's needed before this should be called production-ready.
 | **Live-API verification**           | To do   | Open-Meteo and PurpleAir adapters are unit-tested with a fake `fetch` but haven't been run against the real services; test both                                                              |
 | **PurpleAir key proxy**             | Done    | Vercel Function with allowlist, CDN caching and a 150 req/min per-IP firewall rate limit (see above)                                                                                         |
 | **Mapbox token hygiene**            | To do   | Use a production-only public token, restrict it by URL, and monitor usage in the Mapbox dashboard                                                                                            |
-| **Accessibility audit**             | To do   | Built with keyboard/ARIA support and checked manually in a browser, but no axe/Lighthouse run and no screen-reader pass yet                                                                  |
+| **Accessibility audit**             | Partial | axe-core: 0 violations across 11 states; Lighthouse accessibility 100. Still to do: a real screen-reader pass (NVDA/VoiceOver) and physical-device testing (see the audit section)           |
 | End-to-end tests                    | To do   | Playwright for tabs, drawer open/close/focus, live toggle, dark mode; the map itself has no automated test                                                                                   |
 | Error monitoring                    | To do   | e.g. Sentry (a new dependency, so decide before adding)                                                                                                                                      |
 | Security headers / CSP              | Done    | Set in `vercel.json` (CSP tailored to Mapbox, nosniff, frame denial, referrer and permissions policies). Verify no violations in the browser console after each dependency change            |
 | Data terms and attribution          | To do   | Confirm Open-Meteo, PurpleAir and Mapbox terms for your use (Open-Meteo's free tier is for non-commercial use), keep Mapbox attribution visible, and keep the source links on the About page |
 | SEO/social metadata                 | To do   | Add Open Graph tags and a preview image to `index.html`                                                                                                                                      |
-| Bundle budget                       | Partial | Initial JS is ~437 kB gzip. Lazy-load Trends/Apex and split Chakra to trim it                                                                                                                |
+| Bundle budget                       | Done    | Initial JS ~170 kB gzip; Apex, Mapbox and Plotly are lazy. Mobile TBT is limited by mapbox-gl (see the audit section)                                                                        |
 | Dependency hygiene                  | To do   | Enable Dependabot/Renovate and run `npm audit` in CI                                                                                                                                         |
 | Health disclaimer                   | Partial | About page says the data is not for health decisions; add a short visible footnote on the Overview                                                                                           |
-| Portfolio polish                    | To do   | Add screenshots or a short GIF, a live-demo link, and a LICENSE to this README                                                                                                               |
+| Portfolio polish                    | Partial | Screenshots and live/demo links are in. Still to add: a LICENSE                                                                                                                              |
 
 ## What I'd do next
 
