@@ -4,3 +4,6 @@ dist
 .env.local
 *.local
 .vercel
+
+# Personal study notes, not a repo deliverable.
+STUDY_GUIDE.md
